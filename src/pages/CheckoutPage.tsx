@@ -14,6 +14,7 @@ import {
   Mail,
 } from 'lucide-react';
 import { PageMeta } from '../components/PageMeta';
+import { LoadingState } from '../components/States';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -28,7 +29,7 @@ const toLatinDigits = (v: string) => v.replace(/[٠-٩]/g, d => String(d.charCod
 
 export const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, profile, refreshProfile, sendVerificationEmail, emailVerified, reloadUser } = useAuth();
+  const { user, profile, loading: authLoading, refreshProfile, sendVerificationEmail, emailVerified, reloadUser } = useAuth();
   const { cart, total, discount, appliedCoupon, clearCart } = useCart();
   const { t, language, rtl } = useLanguage();
 
@@ -73,6 +74,8 @@ export const CheckoutPage: React.FC = () => {
   };
 
   useEffect(() => {
+    // Wait until Firebase has restored the session; otherwise a refresh sends signed-in users to /login.
+    if (authLoading) return;
     if (!user) {
       navigate('/login?redirect=/checkout');
       return;
@@ -87,7 +90,7 @@ export const CheckoutPage: React.FC = () => {
       setSettings(s);
     }
     loadSettings();
-  }, [user, cart.length, submittedOrderId, navigate]);
+  }, [authLoading, user, cart.length, submittedOrderId, navigate]);
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,6 +152,10 @@ export const CheckoutPage: React.FC = () => {
       setLoading(false);
     }
   };
+
+  if (authLoading) {
+    return <LoadingState />;
+  }
 
   if (submittedOrderId) {
     return (

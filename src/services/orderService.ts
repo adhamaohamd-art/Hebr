@@ -123,14 +123,20 @@ export const orderService = {
       const colRef = collection(db, 'orders');
       // Regular users may only read their own orders (rules), so the query itself must be
       // filtered by userId; a whole-collection query is denied for non-admins.
+      // A single-field equality filter needs no composite index, so this works even before indexes
+      // are deployed; a user has few orders, so sorting newest-first in memory is cheap.
       const q = userId
-        ? query(colRef, where('userId', '==', userId), orderBy('createdAt', 'desc'))
+        ? query(colRef, where('userId', '==', userId))
         : query(colRef, orderBy('createdAt', 'desc'));
       const snap = await getDocs(q);
       const list: Order[] = [];
       snap.forEach(d => {
         list.push({ id: d.id, ...(d.data() as Omit<Order, 'id'>) });
       });
+      if (userId) {
+        const ms = (o: Order) => (o.createdAt as { toMillis?: () => number } | null)?.toMillis?.() ?? Number.MAX_SAFE_INTEGER;
+        list.sort((a, b) => ms(b) - ms(a));
+      }
       return list;
     } catch (err) {
       if (import.meta.env.DEV) {

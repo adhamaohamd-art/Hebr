@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BookOpen, AlertCircle, ArrowLeft, ArrowRight } from 'lucide-react';
 import { PageMeta } from '../components/PageMeta';
@@ -9,10 +9,19 @@ import { LIMITS } from '../config';
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirectPath = searchParams.get('redirect') || '/library';
+  // Only same-site paths are allowed as redirect target (blocks //evil.com style open redirects)
+  const rawRedirect = searchParams.get('redirect') || '/library';
+  const redirectPath = rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : '/library';
 
-  const { signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
+  const { user, loading: authLoading, signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
   const { t, rtl } = useLanguage();
+
+  // Already signed in (e.g. after a refresh): go straight to where the user wanted to be.
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate(redirectPath, { replace: true });
+    }
+  }, [authLoading, user, redirectPath, navigate]);
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [name, setName] = useState('');
