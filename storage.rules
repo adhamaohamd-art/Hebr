@@ -1,0 +1,36 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
+    }
+
+    // Receipts: user can upload their own receipt, user and admin can read
+    match /receipts/{userId}/{fileName} {
+      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow read: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
+    }
+
+    // Book digital downloads (PDF/EPUB): read only if user purchased 'book' entitlement or is admin
+    match /books/{novelId}/{fileName} {
+      allow read: if isAdmin() || (
+        isSignedIn() &&
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)/entitlements/$(novelId)) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)/entitlements/$(novelId)).data.type == 'book'
+      );
+      allow write: if isAdmin();
+    }
+
+    // Covers and public assets: public read, admin write
+    match /covers/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,241 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isUserActive(userId) {
+      return !exists(/databases/$(database)/documents/users/$(userId)) ||
+        get(/databases/$(database)/documents/users/$(userId)).data.get('status', 'active') == 'active';
+    }
+
+    function hasNovelEntitlement(novelId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)/entitlements/$(novelId));
+    }
+
+    function hasActiveSubscription() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscription != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscription.expiresAt > request.time.toMillis();
+    }
+
+    // Catch-all default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Admins role collection: each user can only check their own document (no enumeration)
+    match /admins/{adminId} {
+      allow read: if isSignedIn() && request.auth.uid == adminId;
+      allow write: if false;
+    }
+
+    // Consolidated light public catalog (Home, Browse, Store read this single document)
+    match /catalog/{catalogId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Digital Book Downloads (PDF) - strictly protected for buyers of 'book' product
+    match /bookFiles/{novelId} {
+      allow read: if isAdmin() || (
+        isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)/entitlements/$(novelId)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)/entitlements/$(novelId)).data.type == 'book'
+      );
+      allow write: if isAdmin();
+    }
+
+    // Novels metadata and rating summaries
+    match /novels/{novelId} {
+      allow read: if resource.data.published == true || isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'visitorRatingAverage', 'visitorRatingCount', 'ratingDistribution', 'rating', 'updatedAt'
+        ])
+      );
+
+      // Chapter metadata subcollection
+      match /chapters/{chapterId} {
+        allow read: if resource.data.published == true || isAdmin();
+        allow write: if isAdmin();
+      }
+    }
+
+    // Chapter contents (protected text body)
+    match /chapterContents/{chapterId} {
+      allow read: if resource.data.get('isFree', false) == true ||
+        isAdmin() ||
+        (resource.data.novelId != null && hasNovelEntitlement(resource.data.novelId)) ||
+        hasActiveSubscription() ||
+        (
+          resource.data.novelId != null &&
+          exists(/databases/$(database)/documents/novels/$(resource.data.novelId)/chapters/$(chapterId)) &&
+          get(/databases/$(database)/documents/novels/$(resource.data.novelId)/chapters/$(chapterId)).data.isFree == true
+        );
+      allow write: if isAdmin();
+    }
+
+    // Novel Reviews and Genuine Ratings
+    match /reviews/{reviewId} {
+      allow read: if resource.data.status == 'published' || isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'published' &&
+        request.resource.data.rating >= 1 && request.resource.data.rating <= 5 &&
+        request.resource.data.keys().hasOnly([
+          'id', 'novelId', 'novelTitle', 'userId', 'userName', 'userEmail',
+          'rating', 'reviewText', 'status', 'moderationReason', 'moderatedAt',
+          'moderatedBy', 'reportCount', 'createdAt', 'updatedAt'
+        ]) &&
+        request.resource.data.get('reviewText', '').size() <= 1000 &&
+        request.resource.data.userName.size() <= 60 &&
+        isUserActive(request.auth.uid);
+
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == request.auth.uid &&
+        resource.data.status == 'published' &&
+        request.resource.data.status == 'published' &&
+        request.resource.data.rating >= 1 && request.resource.data.rating <= 5 &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'status', 'moderationReason', 'moderatedAt', 'moderatedBy', 'reportCount'
+        ]) &&
+        request.resource.data.get('reviewText', '').size() <= 1000 &&
+        isUserActive(request.auth.uid)
+      );
+
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // Moderation Reports submitted by users
+    match /reports/{reportId} {
+      allow create: if isSignedIn() &&
+        request.resource.data.reporterUid == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.reason in ['spam', 'harassment', 'unlawful', 'other'] &&
+        request.resource.data.get('details', '').size() <= 500 &&
+        request.resource.data.keys().hasOnly([
+          'id', 'reviewId', 'novelId', 'novelTitle', 'reportedUserId',
+          'reportedUserName', 'reporterUid', 'reporterName', 'reason',
+          'details', 'reviewExcerpt', 'reviewRating', 'status', 'createdAt',
+          'resolvedAt', 'resolutionNote'
+        ]);
+      allow read, update, delete: if isAdmin();
+    }
+
+    // Administrative Actions Audit Log
+    match /auditLogs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    // User profiles & entitlements
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) &&
+        request.resource.data.keys().hasOnly([
+          'uid', 'name', 'email', 'createdAt', 'subscription',
+          'status', 'restrictedReason', 'restrictedAt', 'reviewCount', 'ratingCount', 'orderCount'
+        ]) &&
+        request.resource.data.subscription == null &&
+        request.resource.data.get('status', 'active') == 'active' &&
+        request.resource.data.name.size() >= 2 &&
+        request.resource.data.name.size() <= 60 &&
+        request.resource.data.email.size() <= 254;
+
+      allow update: if (
+        isOwner(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'subscription', 'status', 'restrictedReason', 'restrictedAt'
+        ]) &&
+        request.resource.data.name.size() >= 2 &&
+        request.resource.data.name.size() <= 60
+      ) || isAdmin();
+
+      allow delete: if isAdmin();
+
+      // Entitlements: read by owner/admin, ONLY writable by admin
+      match /entitlements/{novelId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isAdmin();
+      }
+
+      // Reading progress & bookmarks
+      match /library/{novelId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // Orders (Manual transfer without storage uploads)
+    match /orders/{orderId} {
+      allow create: if isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        isUserActive(request.auth.uid) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.keys().hasOnly([
+          'userId', 'userEmail', 'userName', 'items', 'total', 'discount',
+          'couponCode', 'paymentMethod', 'senderPhone', 'transactionRef',
+          'note', 'status', 'createdAt', 'receiptUrl'
+        ]) &&
+        request.resource.data.paymentMethod in ['vodafone_cash', 'instapay'] &&
+        request.resource.data.senderPhone.matches('^01[0125][0-9]{8}$') &&
+        request.resource.data.transactionRef.matches('^[A-Za-z0-9-]{6,30}$') &&
+        request.resource.data.total >= 0 && request.resource.data.total <= 100000 &&
+        request.resource.data.items.size() >= 1 && request.resource.data.items.size() <= 10 &&
+        request.resource.data.get('note', '').size() <= 140;
+
+      allow read: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // Plans
+    match /plans/{planId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Coupons
+    match /coupons/{code} {
+      allow get: if isSignedIn() || isAdmin();
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Comments with strict input validation
+    match /comments/{commentId} {
+      allow read: if resource.data.hidden == false || isAdmin();
+      allow create: if isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        isUserActive(request.auth.uid) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.hidden == false &&
+        request.resource.data.keys().hasOnly(['novelId', 'chapterId', 'userId', 'userName', 'text', 'hidden', 'createdAt']) &&
+        request.resource.data.text.size() >= 1 &&
+        request.resource.data.text.size() <= 500 &&
+        request.resource.data.userName.size() <= 60;
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // Site settings
+    match /settings/site {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

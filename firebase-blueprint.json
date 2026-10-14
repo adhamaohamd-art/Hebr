@@ -1,0 +1,264 @@
+{
+  "entities": {
+    "Novel": {
+      "title": "Novel",
+      "description": "Arabic novel metadata, pricing, editorial and genuine visitor rating statistics",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "genre": { "type": "string" },
+        "status": { "type": "string", "enum": ["مستمرة", "مكتملة"] },
+        "description": { "type": "string" },
+        "novelPrice": { "type": "number" },
+        "bookPrice": { "type": "number" },
+        "freeChapters": { "type": "number" },
+        "chaptersCount": { "type": "number" },
+        "published": { "type": "boolean" },
+        "color": { "type": "string" },
+        "accent": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "visitorRatingAverage": { "type": "number" },
+        "visitorRatingCount": { "type": "number" },
+        "editorialRating": { "type": "number" },
+        "editorialReview": { "type": "string" },
+        "customRating": { "type": "number" },
+        "adminRatingDistribution": { "type": "object" },
+        "adminRatingCount": { "type": "number" },
+        "adminRatingAverage": { "type": "number" },
+        "adminRatingPoints": { "type": "number" },
+        "adminRatingEnabled": { "type": "boolean" },
+        "ratingDisplayMode": { "type": "string", "enum": ["visitor", "editorial", "custom", "combined", "blended"] },
+        "ratingsEnabled": { "type": "boolean" }
+      },
+      "required": ["title", "author", "genre", "status", "novelPrice", "published"]
+    },
+    "ChapterMeta": {
+      "title": "ChapterMeta",
+      "description": "Public chapter metadata with title, number, and unlock status (no text body)",
+      "type": "object",
+      "properties": {
+        "novelId": { "type": "string" },
+        "number": { "type": "number" },
+        "title": { "type": "string" },
+        "isFree": { "type": "boolean" },
+        "published": { "type": "boolean" }
+      },
+      "required": ["novelId", "number", "title", "isFree", "published"]
+    },
+    "ChapterContent": {
+      "title": "ChapterContent",
+      "description": "Protected chapter body text for authorized readers and subscribers only",
+      "type": "object",
+      "properties": {
+        "novelId": { "type": "string" },
+        "body": { "type": "string" }
+      },
+      "required": ["novelId", "body"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with optional active club subscription details, status and activity metrics",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "restricted", "deactivated"] },
+        "restrictedReason": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Novel rating (1-5 stars) and optional written review submitted by visitor",
+      "type": "object",
+      "properties": {
+        "novelId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviewText": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["published", "hidden"] },
+        "moderationReason": { "type": "string" },
+        "reportCount": { "type": "number" }
+      },
+      "required": ["novelId", "userId", "userName", "rating", "status"]
+    },
+    "ModerationReport": {
+      "title": "ModerationReport",
+      "description": "Visitor-submitted content report for moderation review",
+      "type": "object",
+      "properties": {
+        "reviewId": { "type": "string" },
+        "novelId": { "type": "string" },
+        "reportedUserId": { "type": "string" },
+        "reporterUid": { "type": "string" },
+        "reporterName": { "type": "string" },
+        "reason": { "type": "string", "enum": ["spam", "harassment", "unlawful", "other"] },
+        "details": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["pending", "resolved", "dismissed"] }
+      },
+      "required": ["reviewId", "novelId", "reportedUserId", "reporterUid", "reason", "status"]
+    },
+    "AuditLogEntry": {
+      "title": "AuditLogEntry",
+      "description": "Administrative actions audit log for visitor and content moderation",
+      "type": "object",
+      "properties": {
+        "adminUid": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" }
+      },
+      "required": ["adminUid", "adminEmail", "action", "targetType", "targetId"]
+    },
+    "Entitlement": {
+      "title": "Entitlement",
+      "description": "Reader ownership grant for novel or full downloadable book",
+      "type": "object",
+      "properties": {
+        "novelId": { "type": "string" },
+        "type": { "type": "string", "enum": ["novel", "book"] },
+        "orderId": { "type": "string" }
+      },
+      "required": ["novelId", "type"]
+    },
+    "LibraryProgress": {
+      "title": "LibraryProgress",
+      "description": "User bookmarks and reading progress per novel",
+      "type": "object",
+      "properties": {
+        "lastChapter": { "type": "number" },
+        "bookmarked": { "type": "boolean" }
+      }
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Reader acquisition order with receipt and review status",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "total": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["vodafone_cash", "instapay"] },
+        "receiptUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] }
+      },
+      "required": ["userId", "total", "paymentMethod", "status"]
+    },
+    "Plan": {
+      "title": "Plan",
+      "description": "Subscription reading club plan",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "priceMonthly": { "type": "number" },
+        "priceYearly": { "type": "number" },
+        "description": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["name", "priceMonthly", "priceYearly", "active"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Promotional discount coupon",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "type": { "type": "string", "enum": ["percent", "fixed"] },
+        "value": { "type": "number" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["code", "type", "value", "active"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Reader review or comment per chapter",
+      "type": "object",
+      "properties": {
+        "novelId": { "type": "string" },
+        "chapterId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "text": { "type": "string" },
+        "hidden": { "type": "boolean" }
+      },
+      "required": ["novelId", "chapterId", "userId", "text"]
+    },
+    "SiteSettings": {
+      "title": "SiteSettings",
+      "description": "Platform settings, rating configuration, payment accounts, and instructions",
+      "type": "object",
+      "properties": {
+        "siteName": { "type": "string" },
+        "vodafoneCashNumber": { "type": "string" },
+        "instapayHandle": { "type": "string" },
+        "paymentInstructions": { "type": "string" },
+        "ratingsRequireAuth": { "type": "boolean" },
+        "globalRatingsEnabled": { "type": "boolean" },
+        "maxReviewsPerDayPerUser": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/novels/{novelId}": {
+      "schema": "Novel",
+      "description": "Public catalog of novels and rating summaries"
+    },
+    "/novels/{novelId}/chapters/{chapterId}": {
+      "schema": "ChapterMeta",
+      "description": "Chapter titles and indices"
+    },
+    "/chapterContents/{chapterId}": {
+      "schema": "ChapterContent",
+      "description": "Protected text body of chapters"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Genuine visitor novel ratings and reviews"
+    },
+    "/reports/{reportId}": {
+      "schema": "ModerationReport",
+      "description": "User-submitted content violation reports"
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLogEntry",
+      "description": "Audit trail of admin visitor and review actions"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Registered user profile and account status"
+    },
+    "/users/{userId}/entitlements/{novelId}": {
+      "schema": "Entitlement",
+      "description": "Granted book/novel ownership"
+    },
+    "/users/{userId}/library/{novelId}": {
+      "schema": "LibraryProgress",
+      "description": "User bookmarks and progress"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer purchase orders"
+    },
+    "/plans/{planId}": {
+      "schema": "Plan",
+      "description": "Reading subscription plans"
+    },
+    "/coupons/{code}": {
+      "schema": "Coupon",
+      "description": "Promo coupons"
+    },
+    "/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Chapter impressions and feedback"
+    },
+    "/settings/site": {
+      "schema": "SiteSettings",
+      "description": "Site settings and configuration"
+    }
+  }
+}

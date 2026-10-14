@@ -1,0 +1,8 @@
+{
+  "name": "Hebr - Arabic Novel Platform",
+  "description": "An elegant Arabic novel reading and publishing platform for stories that leave a mark.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
