@@ -20,7 +20,7 @@ import {
   Shield,
   MessageSquare,
 } from 'lucide-react';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, QueryDocumentSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { LoadingState } from '../../components/States';
 import { novelService } from '../../services/novelService';
@@ -50,6 +50,9 @@ export const AdminUsersPage: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [novels, setNovels] = useState<Novel[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [usersCursor, setUsersCursor] = useState<QueryDocumentSnapshot | null>(null);
+  const [hasMoreUsers, setHasMoreUsers] = useState(false);
+  const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -107,8 +110,10 @@ export const AdminUsersPage: React.FC = () => {
   const fetchUsers = useCallback(async () => {
     try {
       setLoadingUsers(true);
-      const data = await visitorService.getVisitors();
-      setUsers(data);
+      const page = await visitorService.getVisitorsPage();
+      setUsers(page.users);
+      setUsersCursor(page.lastDoc);
+      setHasMoreUsers(page.hasMore);
       const nList = await novelService.getNovels();
       setNovels(nList);
       if (nList.length > 0) setSelectedNovelId(nList[0].id);
@@ -118,6 +123,20 @@ export const AdminUsersPage: React.FC = () => {
       setLoadingUsers(false);
     }
   }, []);
+
+  // Loads the next 50 users from the server (never the whole collection at once)
+  const handleLoadMoreUsers = async () => {
+    if (!usersCursor || loadingMoreUsers) return;
+    try {
+      setLoadingMoreUsers(true);
+      const page = await visitorService.getVisitorsPage(usersCursor);
+      setUsers(prev => [...prev, ...page.users]);
+      setUsersCursor(page.lastDoc);
+      setHasMoreUsers(page.hasMore);
+    } finally {
+      setLoadingMoreUsers(false);
+    }
+  };
 
   // 2. Fetch Moderation Reviews
   const fetchModerationReviews = useCallback(async () => {
@@ -684,6 +703,20 @@ export const AdminUsersPage: React.FC = () => {
                       <PageChevronRight size={14} />
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Server-side paging: search and counters cover the users loaded so far */}
+              {hasMoreUsers && (
+                <div className="text-center p-3 border-t border-[var(--line)]">
+                  <button
+                    type="button"
+                    onClick={handleLoadMoreUsers}
+                    disabled={loadingMoreUsers}
+                    className="outline-button small"
+                  >
+                    {loadingMoreUsers ? t.common.loading : t.common.loadMoreUsers}
+                  </button>
                 </div>
               )}
             </div>

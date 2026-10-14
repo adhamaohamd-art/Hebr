@@ -18,7 +18,7 @@ import { LoadingState, ErrorState } from '../components/States';
 import { NovelReviews } from '../components/NovelReviews';
 import { novelService } from '../services/novelService';
 import { libraryService } from '../services/libraryService';
-import { bookFileService } from '../services/bookFileService';
+import { BookDownloadButtons } from '../components/BookDownloadButtons';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -42,8 +42,6 @@ export const NovelDetailPage: React.FC = () => {
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [addedNote, setAddedNote] = useState('');
-  const [downloading, setDownloading] = useState(false);
-  const [downloadError, setDownloadError] = useState('');
 
   const BackArrow = rtl ? ArrowRight : ArrowLeft;
   const RowChevron = rtl ? ChevronLeft : ChevronRight;
@@ -134,26 +132,6 @@ export const NovelDetailPage: React.FC = () => {
     setTimeout(() => setAddedNote(''), 3000);
   };
 
-  const handleDownloadBook = async () => {
-    if (!novel) return;
-    try {
-      setDownloading(true);
-      setDownloadError('');
-      const bookFile = await bookFileService.getBookFile(novel.id);
-      if (bookFile?.fileUrl && bookFile.fileUrl.startsWith('https://')) {
-        window.open(bookFile.fileUrl, '_blank', 'noopener,noreferrer');
-      } else {
-        setDownloadError(t.novelDetail.downloadBookMissing);
-        setTimeout(() => setDownloadError(''), 5000);
-      }
-    } catch {
-      setDownloadError(t.novelDetail.downloadBookMissing);
-      setTimeout(() => setDownloadError(''), 5000);
-    } finally {
-      setDownloading(false);
-    }
-  };
-
   const hasPurchasedNovel = Boolean(entitlement);
   const hasPurchasedBook = entitlement?.type === 'book';
 
@@ -227,15 +205,6 @@ export const NovelDetailPage: React.FC = () => {
             </div>
           )}
 
-          {downloadError && (
-            <div className="mb-4 p-3 bg-amber-50 text-amber-800 text-xs border border-amber-200 flex items-center justify-between">
-              <span>{downloadError}</span>
-              <button onClick={() => setDownloadError('')} className="underline text-xs">
-                {t.common.close}
-              </button>
-            </div>
-          )}
-
           <div className="detail-actions">
             {chapters.length > 0 && (
               <button
@@ -265,15 +234,10 @@ export const NovelDetailPage: React.FC = () => {
                 <span className="inline-flex items-center gap-1.5 px-3 py-2 bg-[var(--green)] text-white text-xs font-medium">
                   <Check size={15} /> {t.novelDetail.ownedBookBadge}
                 </span>
-                <button
-                  type="button"
-                  disabled={downloading}
-                  onClick={handleDownloadBook}
-                  className="outline-button flex items-center gap-1.5"
-                >
-                  <Download size={16} />
-                  {downloading ? t.common.loading : t.novelDetail.downloadBookBtn}
-                </button>
+                <BookDownloadButtons
+                  novel={{ id: novel.id, title: novel.title, author: novel.author }}
+                  licensedTo={profile?.name || user?.email || undefined}
+                />
               </>
             )}
 

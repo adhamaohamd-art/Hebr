@@ -10,51 +10,40 @@ import {
   where,
   orderBy,
   limit,
+  startAfter,
   serverTimestamp,
+  QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { UserProfile, Review, AuditLogEntry, AccountStatus } from '../types';
 import { reviewService } from './reviewService';
 
+export const VISITORS_PAGE_SIZE = 50;
+
 export const visitorService = {
   /**
-   * Fetches visitors/registered users with optional search and status filter.
+   * Fetches ONE page of users (default 50) so opening the admin page never reads the whole
+   * users collection. Pass the returned `lastDoc` back as `cursor` to get the next page.
    */
-  async getVisitors(options?: {
-    search?: string;
-    statusFilter?: string;
-    limitCount?: number;
-  }): Promise<UserProfile[]> {
+  async getVisitorsPage(
+    cursor?: QueryDocumentSnapshot | null,
+    pageSize: number = VISITORS_PAGE_SIZE
+  ): Promise<{ users: UserProfile[]; lastDoc: QueryDocumentSnapshot | null; hasMore: boolean }> {
     try {
-      const snap = await getDocs(collection(db, 'users'));
-      let list: UserProfile[] = [];
-
-      snap.forEach(d => {
-        list.push({ uid: d.id, ...(d.data() as Omit<UserProfile, 'uid'>) });
-      });
-
-      // Filter by search query
-      if (options?.search) {
-        const q = options.search.toLowerCase().trim();
-        list = list.filter(u =>
-          (u.name && u.name.toLowerCase().includes(q)) ||
-          (u.email && u.email.toLowerCase().includes(q)) ||
-          u.uid.toLowerCase().includes(q)
-        );
-      }
-
-      // Filter by status
-      if (options?.statusFilter && options.statusFilter !== 'all') {
-        list = list.filter(u => {
-          const s = u.status || 'active';
-          return s === options.statusFilter;
-        });
-      }
-
-      return list;
+      const constraints = [...(cursor ? [startAfter(cursor)] : []), limit(pageSize)];
+      const snap = await getDocs(query(collection(db, 'users'), ...constraints));
+      const users: UserProfile[] = snap.docs.map(d => ({
+        uid: d.id,
+        ...(d.data() as Omit<UserProfile, 'uid'>),
+      }));
+      return {
+        users,
+        lastDoc: snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null,
+        hasMore: snap.docs.length === pageSize,
+      };
     } catch (err) {
-      if (import.meta.env.DEV) console.warn('getVisitors error:', err);
-      return [];
+      if (import.meta.env.DEV) console.warn('getVisitorsPage error:', err);
+      return { users: [], lastDoc: null, hasMore: false };
     }
   },
 

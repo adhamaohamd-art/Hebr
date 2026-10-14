@@ -58,6 +58,8 @@ export const ReaderPage: React.FC = () => {
   const [lastCommentDoc, setLastCommentDoc] = useState<QueryDocumentSnapshot | null>(null);
   const [hasMoreComments, setHasMoreComments] = useState(false);
   const [loadingMoreComments, setLoadingMoreComments] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
   const [newCommentText, setNewCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [commentError, setCommentError] = useState('');
@@ -93,6 +95,11 @@ export const ReaderPage: React.FC = () => {
       try {
         setLoading(true);
         setLoadError('');
+        // Comments are NOT fetched with the chapter: reset them and wait for the reader to ask.
+        setComments([]);
+        setLastCommentDoc(null);
+        setHasMoreComments(false);
+        setCommentsOpen(false);
         const novelData = await novelService.getNovelById(novelId);
         if (!novelData) {
           setNovel(null);
@@ -133,12 +140,6 @@ export const ReaderPage: React.FC = () => {
                 lastChapter: ch.number,
               });
             }
-
-            // Load comments with pagination
-            const commentsRes = await commentService.getChapterComments(ch.id, isAdmin);
-            setComments(commentsRes.comments);
-            setLastCommentDoc(commentsRes.lastDoc);
-            setHasMoreComments(commentsRes.hasMore);
           } else {
             // Locked: never fetch text
             setContent(null);
@@ -234,8 +235,9 @@ export const ReaderPage: React.FC = () => {
       createdAt: new Date(),
     };
 
-    // Add new comment optimistically
-    setComments(prev => [optimisticComment, ...prev]);
+    // Add new comment optimistically (only when the list is already on screen)
+    const listWasOpen = commentsOpen;
+    if (listWasOpen) setComments(prev => [optimisticComment, ...prev]);
     setNewCommentText('');
     setSubmittingComment(true);
     setCommentError('');
@@ -248,7 +250,12 @@ export const ReaderPage: React.FC = () => {
         profile?.name || user.email?.split('@')[0] || (language === 'ar' ? 'قارئ' : 'Reader'),
         trimmed
       );
-      setComments(prev => prev.map(c => c.id === tempId ? { ...c, id: realId } : c));
+      if (listWasOpen) {
+        setComments(prev => prev.map(c => c.id === tempId ? { ...c, id: realId } : c));
+      } else {
+        // First time the reader sees the list: load it so their new comment shows up.
+        await handleShowComments();
+      }
     } catch (err) {
       // Rollback optimistic comment
       setComments(prev => prev.filter(c => c.id !== tempId));
@@ -259,6 +266,22 @@ export const ReaderPage: React.FC = () => {
       setCommentError(isOwnMessage ? msg : getFriendlyErrorMessage(err, language));
     } finally {
       setSubmittingComment(false);
+    }
+  };
+
+  const handleShowComments = async () => {
+    if (!currentChapter || loadingComments) return;
+    try {
+      setLoadingComments(true);
+      const res = await commentService.getChapterComments(currentChapter.id, isAdmin);
+      setComments(res.comments);
+      setLastCommentDoc(res.lastDoc);
+      setHasMoreComments(res.hasMore);
+      setCommentsOpen(true);
+    } catch (err) {
+      if (import.meta.env.DEV) console.warn('Show comments error:', err);
+    } finally {
+      setLoadingComments(false);
     }
   };
 
@@ -658,7 +681,22 @@ export const ReaderPage: React.FC = () => {
             </div>
           )}
 
+          {/* Comments are loaded only when the reader asks (saves Firestore reads) */}
+          {!commentsOpen && (
+            <div className="text-center py-2">
+              <button
+                type="button"
+                onClick={handleShowComments}
+                disabled={loadingComments}
+                className="outline-button small"
+              >
+                {loadingComments ? t.common.loading : t.common.showComments}
+              </button>
+            </div>
+          )}
+
           {/* Comments List */}
+          {commentsOpen && (
           <div className="space-y-4">
             {comments.length === 0 ? (
               <p className="text-xs text-[var(--muted)] text-center py-4">
@@ -716,6 +754,7 @@ export const ReaderPage: React.FC = () => {
               </div>
             )}
           </div>
+          )}
         </section>
       )}
     </div>

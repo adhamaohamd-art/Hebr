@@ -32,6 +32,9 @@ let lastCommentTimestamp = 0;
 const commentsCache = new Map<string, CachedComments>();
 const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
 
+// Comments are loaded on demand, 5 at a time, to keep Firestore reads low on the free plan.
+export const COMMENTS_PAGE_SIZE = 5;
+
 export const commentService = {
   /**
    * Invalidate 2-minute in-memory cache for a chapter or all chapters
@@ -46,7 +49,7 @@ export const commentService = {
   },
 
   /**
-   * Fetches chapter comments with limit(20) and startAfter cursor.
+   * Fetches chapter comments one page (COMMENTS_PAGE_SIZE = 5) at a time with a startAfter cursor.
    * Initial page is cached for 2 minutes and invalidated when user posts.
    */
   async getChapterComments(
@@ -71,7 +74,7 @@ export const commentService = {
         ...(includeHidden ? [] : [where('hidden', '==', false)]),
         orderBy('createdAt', 'desc'),
         ...(lastDoc ? [startAfter(lastDoc)] : []),
-        limit(20),
+        limit(COMMENTS_PAGE_SIZE),
       ];
 
       const q = query(colRef, ...constraints);
@@ -85,7 +88,7 @@ export const commentService = {
       const pageResult: ChapterCommentsPage = {
         comments: list,
         lastDoc: nextLastDoc,
-        hasMore: snap.docs.length === 20,
+        hasMore: snap.docs.length === COMMENTS_PAGE_SIZE,
       };
 
       if (!lastDoc) {

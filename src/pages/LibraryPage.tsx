@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Sparkles,
-  Download,
   BookOpen,
   Clock,
   CheckCircle2,
@@ -21,7 +20,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { libraryService } from '../services/libraryService';
 import { novelService } from '../services/novelService';
 import { orderService } from '../services/orderService';
-import { bookFileService } from '../services/bookFileService';
+import { BookDownloadButtons } from '../components/BookDownloadButtons';
 import { Novel, UserLibraryItem, Entitlement, Order } from '../types';
 import { getLocalizedNovelField } from '../i18n/translations';
 
@@ -36,8 +35,6 @@ export const LibraryPage: React.FC = () => {
   const [entitlements, setEntitlements] = useState<Record<string, Entitlement>>({});
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [downloadNotice, setDownloadNotice] = useState('');
-  const [downloadingNovelId, setDownloadingNovelId] = useState<string | null>(null);
 
   const ArrowIcon = rtl ? ArrowLeft : ArrowRight;
 
@@ -95,26 +92,6 @@ export const LibraryPage: React.FC = () => {
       loadUserData();
     }
   }, [user, authLoading, navigate]);
-
-  const handleDownloadBook = async (novelId: string) => {
-    try {
-      setDownloadingNovelId(novelId);
-      setDownloadNotice('');
-      const fileData = await bookFileService.getBookFile(novelId);
-      if (fileData?.fileUrl && fileData.fileUrl.startsWith('https://')) {
-        // Open safe link in new window/tab
-        window.open(fileData.fileUrl, '_blank', 'noopener,noreferrer');
-      } else {
-        setDownloadNotice(t.novelDetail.downloadBookMissing);
-        setTimeout(() => setDownloadNotice(''), 5000);
-      }
-    } catch {
-      setDownloadNotice(t.novelDetail.downloadBookMissing);
-      setTimeout(() => setDownloadNotice(''), 5000);
-    } finally {
-      setDownloadingNovelId(null);
-    }
-  };
 
   if (authLoading || loading) {
     return (
@@ -184,15 +161,6 @@ export const LibraryPage: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {downloadNotice && (
-        <div className="mb-4 p-3 bg-amber-50 text-amber-800 border border-amber-300 text-xs flex items-center justify-between">
-          <span>{downloadNotice}</span>
-          <button onClick={() => setDownloadNotice('')} className="underline text-xs">
-            {t.common.close}
-          </button>
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="library-tabs">
@@ -314,20 +282,16 @@ export const LibraryPage: React.FC = () => {
                         >
                           <BookOpen size={14} /> {t.library.readChaptersBtn}
                         </Link>
-                        {isBook && (
-                          <button
-                            type="button"
-                            disabled={downloadingNovelId === novel.id}
-                            onClick={() => handleDownloadBook(novel.id)}
-                            className="outline-button small"
-                          >
-                            <Download size={14} />{' '}
-                            {downloadingNovelId === novel.id
-                              ? t.common.loading
-                              : t.novelDetail.downloadBookBtn}
-                          </button>
-                        )}
                       </div>
+                      {isBook && (
+                        <div className="mt-3">
+                          <BookDownloadButtons
+                            small
+                            novel={{ id: novel.id, title: novel.title, author: novel.author }}
+                            licensedTo={profile?.name || user?.email || undefined}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

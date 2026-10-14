@@ -72,6 +72,8 @@ export interface Translations {
     emailNotVerifiedComment: string;
     emailNotVerifiedOrder: string;
     loadMoreComments: string;
+    showComments: string;
+    loadMoreUsers: string;
   };
   genres: Record<string, string>;
   statusLabels: Record<string, string>;
@@ -149,6 +151,14 @@ export interface Translations {
     notFoundDesc: string;
     downloadBookBtn: string;
     downloadBookMissing: string;
+    bookEpubBtn: string;
+    bookPdfBtn: string;
+    bookPreparing: string;
+    bookPreparingShort: string;
+    bookPrepareFailed: string;
+    bookPopupBlocked: string;
+    bookPartial: string;
+    bookNoChapters: string;
   };
   reader: {
     loadingMessage: string;
@@ -904,6 +914,8 @@ export const translations: Record<Language, Translations> = {
       emailNotVerifiedComment: 'يجب تأكيد بريدك الإلكتروني أولاً لتتمكن من إضافة التعليقات.',
       emailNotVerifiedOrder: 'يجب تأكيد بريدك الإلكتروني أولاً قبل إتمام الطلب.',
       loadMoreComments: 'تحميل المزيد من التعليقات',
+      showComments: 'عرض التعليقات',
+      loadMoreUsers: 'تحميل المزيد من المستخدمين',
     },
     genres: {
       'الكل': 'الكل',
@@ -1007,6 +1019,14 @@ export const translations: Record<Language, Translations> = {
       notFoundDesc: 'قد تكون الرواية محذوفة أو غير منشورة حالياً.',
       downloadBookBtn: 'تحميل النسخة الرقمية (PDF)',
       downloadBookMissing: 'رابط التحميل غير متوفر حالياً، يرجى التواصل مع الإدارة',
+      bookEpubBtn: 'تحميل EPUB',
+      bookPdfBtn: 'تحميل PDF',
+      bookPreparing: 'جاري تجهيز الكتاب... {done} / {total} فصل',
+      bookPreparingShort: 'جاري تجهيز الكتاب، لحظات...',
+      bookPrepareFailed: 'تعذّر تجهيز الكتاب الآن، حاول بعد قليل.',
+      bookPopupBlocked: 'اسمح للموقع بفتح النوافذ المنبثقة ثم اضغط زر PDF مرة أخرى.',
+      bookPartial: 'تم تجهيز الكتاب لكن تعذّر تحميل {n} فصل. حاول مرة أخرى أو تواصل مع الإدارة.',
+      bookNoChapters: 'لا توجد فصول منشورة لهذه الرواية بعد.',
     },
     reader: {
       loadingMessage: 'جاري تجهيز صفحات الفصل وتنسيق الخطوط...',
@@ -1760,6 +1780,8 @@ export const translations: Record<Language, Translations> = {
       emailNotVerifiedComment: 'You must verify your email address before posting comments.',
       emailNotVerifiedOrder: 'You must verify your email address before completing your order.',
       loadMoreComments: 'Load more comments',
+      showComments: 'Show comments',
+      loadMoreUsers: 'Load more users',
     },
     genres: {
       'الكل': 'All',
@@ -1863,6 +1885,14 @@ export const translations: Record<Language, Translations> = {
       notFoundDesc: 'This title may have been removed or unpublished.',
       downloadBookBtn: 'Download Digital Edition (PDF)',
       downloadBookMissing: 'Download link is currently unavailable. Please contact administration.',
+      bookEpubBtn: 'Download EPUB',
+      bookPdfBtn: 'Download PDF',
+      bookPreparing: 'Preparing your book... {done} / {total} chapters',
+      bookPreparingShort: 'Preparing your book...',
+      bookPrepareFailed: 'Could not prepare the book right now. Please try again shortly.',
+      bookPopupBlocked: 'Please allow pop-ups for this site, then press the PDF button again.',
+      bookPartial: 'The book was prepared but {n} chapter(s) could not be loaded. Try again or contact support.',
+      bookNoChapters: 'This novel has no published chapters yet.',
     },
     reader: {
       loadingMessage: 'Preparing chapter text and typography...',
