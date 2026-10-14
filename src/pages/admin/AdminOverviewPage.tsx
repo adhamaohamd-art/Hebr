@@ -13,6 +13,7 @@ import { novelService } from '../../services/novelService';
 import { orderService } from '../../services/orderService';
 import { useLanguage } from '../../context/LanguageContext';
 import { getLocalizedNovelField } from '../../i18n/translations';
+import { getLocalizedGenres } from '../../lib/genres';
 import { Novel, Order } from '../../types';
 
 export const AdminOverviewPage: React.FC = () => {
@@ -245,7 +246,7 @@ export const AdminOverviewPage: React.FC = () => {
             {novels.map(novel => {
               const novelTitle = getLocalizedNovelField(novel, 'title', language);
               const authorName = getLocalizedNovelField(novel, 'author', language);
-              const genreName = getLocalizedNovelField(novel, 'genre', language);
+              const genreName = getLocalizedGenres(novel, language).join('، ');
               const statusName = t.statusLabels[novel.status] || novel.status;
 
               return (

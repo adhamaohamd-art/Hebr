@@ -9,6 +9,7 @@ import { getLocalizedNovelField } from '../../i18n/translations';
 import { Novel } from '../../types';
 import { getAdminErrorMessage } from '../../lib/firebase';
 import { getNovelRatingSummary } from '../../lib/rating';
+import { GENRE_KEYS, MAX_GENRES, getNovelGenres, genreFieldsForSave, getLocalizedGenres } from '../../lib/genres';
 
 export const AdminNovelsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -46,6 +47,7 @@ export const AdminNovelsPage: React.FC = () => {
       authorEn: '',
       genre: 'رومانسية',
       genreEn: 'Romance',
+      genres: ['رومانسية'],
       status: 'مستمرة',
       description: '',
       descriptionEn: '',
@@ -153,7 +155,7 @@ export const AdminNovelsPage: React.FC = () => {
             {novels.map(novel => {
               const displayTitle = getLocalizedNovelField(novel, 'title', language);
               const displayAuthor = getLocalizedNovelField(novel, 'author', language);
-              const displayGenre = getLocalizedNovelField(novel, 'genre', language);
+              const displayGenre = getLocalizedGenres(novel, language).join('، ');
               const displayStatus = t.statusLabels[novel.status] || novel.status;
 
               return (
@@ -369,21 +371,43 @@ export const AdminNovelsPage: React.FC = () => {
 
               {/* Genre, Status, Free Chapters */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-medium mb-1">{t.adminNovels.genre}</label>
-                  <select
-                    value={editingNovel.genre || 'رومانسية'}
-                    onChange={e => setEditingNovel({ ...editingNovel, genre: e.target.value })}
-                    className="w-full p-2 border border-[var(--line)] text-xs bg-white"
-                  >
-                    <option value="رومانسية">{t.genres['رومانسية']}</option>
-                    <option value="دراما">{t.genres['دراما']}</option>
-                    <option value="فانتازيا">{t.genres['فانتازيا']}</option>
-                    <option value="غموض">{t.genres['غموض']}</option>
-                    <option value="اجتماعية">{t.genres['اجتماعية']}</option>
-                    <option value="تشويق">{t.genres['تشويق']}</option>
-                    <option value="تاريخي">{t.genres['تاريخي']}</option>
-                  </select>
+                <div className="sm:col-span-3">
+                  <label className="block text-xs font-medium mb-1">
+                    {t.adminNovels.genre}
+                    <span className="text-[var(--muted)] font-normal">
+                      {' '}
+                      {language === 'ar'
+                        ? `(اختر حتى ${MAX_GENRES} تصنيفات — الأول هو التصنيف الأساسي)`
+                        : `(pick up to ${MAX_GENRES} — the first is the primary genre)`}
+                    </span>
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {GENRE_KEYS.map(key => {
+                      const selected = getNovelGenres(editingNovel);
+                      const isOn = selected.includes(key);
+                      const atLimit = !isOn && selected.length >= MAX_GENRES;
+                      return (
+                        <button
+                          type="button"
+                          key={key}
+                          aria-pressed={isOn}
+                          disabled={atLimit}
+                          onClick={() => {
+                            const next = isOn ? selected.filter(g => g !== key) : [...selected, key];
+                            if (next.length === 0) return; // at least one genre is required
+                            setEditingNovel({ ...editingNovel, ...genreFieldsForSave(next) });
+                          }}
+                          className={`px-3 py-1 text-xs border transition ${
+                            isOn
+                              ? 'bg-[var(--green)] text-white border-[var(--green)]'
+                              : 'bg-white border-[var(--line)] disabled:opacity-40'
+                          }`}
+                        >
+                          {t.genres[key] || key}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1">{t.adminNovels.status}</label>

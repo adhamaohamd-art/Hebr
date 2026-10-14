@@ -26,6 +26,7 @@ import { Novel, ChapterMeta, Entitlement } from '../types';
 import { getLocalizedNovelField, getLocalizedChapterTitle } from '../i18n/translations';
 import { getFriendlyErrorMessage } from '../lib/firebase';
 import { getNovelRatingSummary } from '../lib/rating';
+import { getLocalizedGenres } from '../lib/genres';
 
 export const NovelDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -97,7 +98,7 @@ export const NovelDetailPage: React.FC = () => {
   const title = getLocalizedNovelField(novel, 'title', language);
   const author = getLocalizedNovelField(novel, 'author', language);
   const description = getLocalizedNovelField(novel, 'description', language);
-  const genre = getLocalizedNovelField(novel, 'genre', language);
+  const genre = getLocalizedGenres(novel, language).join(' · ');
   const statusLabel = t.statusLabels[novel.status] || novel.status;
 
   const handleAddNovel = () => {

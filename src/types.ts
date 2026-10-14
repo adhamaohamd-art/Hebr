@@ -62,8 +62,9 @@ export interface Novel {
   titleEn?: string;
   author: string;
   authorEn?: string;
-  genre: string;
+  genre: string; // primary genre (first of `genres`), kept for older data/code
   genreEn?: string;
+  genres?: string[]; // all genres of the novel (canonical Arabic keys)
   status: 'مستمرة' | 'مكتملة';
   description: string;
   descriptionEn?: string;
@@ -110,8 +111,9 @@ export interface CatalogNovel {
   titleEn?: string;
   author: string;
   authorEn?: string;
-  genre: string;
+  genre: string; // primary genre (first of `genres`), kept for older data/code
   genreEn?: string;
+  genres?: string[]; // all genres of the novel (canonical Arabic keys)
   status: 'مستمرة' | 'مكتملة';
   description: string; // trimmed to 300 characters
   descriptionEn?: string;

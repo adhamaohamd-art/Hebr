@@ -3,9 +3,10 @@ import { Feather } from 'lucide-react';
 import { Novel } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 import { getLocalizedNovelField } from '../i18n/translations';
+import { getLocalizedGenres } from '../lib/genres';
 
 interface CoverProps {
-  novel: Pick<Novel, 'title' | 'titleEn' | 'author' | 'authorEn' | 'genre' | 'genreEn' | 'color' | 'accent' | 'coverUrl'>;
+  novel: Pick<Novel, 'title' | 'titleEn' | 'author' | 'authorEn' | 'genre' | 'genreEn' | 'color' | 'accent' | 'coverUrl'> & { genres?: string[] };
   large?: boolean;
 }
 
@@ -14,7 +15,7 @@ export const Cover: React.FC<CoverProps> = ({ novel, large = false }) => {
 
   const title = getLocalizedNovelField(novel, 'title', language);
   const author = getLocalizedNovelField(novel, 'author', language);
-  const genre = getLocalizedNovelField(novel, 'genre', language);
+  const genre = getLocalizedGenres(novel, language)[0] || '';
 
   if (novel.coverUrl) {
     return (

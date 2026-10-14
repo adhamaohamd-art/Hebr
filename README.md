@@ -159,3 +159,14 @@ The rules were written and statically checked but not run against the Firebase e
 ```bash
 npx tsx tests/ratings.test.ts
 ```
+
+## Multiple genres per novel
+
+A novel can now carry up to 5 genres (e.g. Romance + Fantasy + Action).
+
+- **Data:** `novels/{id}.genres` is an array of genre keys. `genre` / `genreEn` still hold the FIRST genre, so older code and older novels keep working. Novels that only have `genre` need no migration: they simply show one genre until you edit them.
+- **Admin → Novels:** the genre dropdown is now a set of toggle chips (at least 1, at most 5). The first selected genre is the primary one.
+- **Reader side:** cards show the first two genres, the novel page shows all of them, covers show the primary genre, and the Browse filter matches a novel if ANY of its genres is selected.
+- **New genre "أكشن / Action"** was added. To add more genres, edit `GENRE_KEYS` in `src/lib/genres.ts` and add the labels under `genres` (ar + en) in `src/i18n/translations.ts`.
+- **After deploying:** open each novel you want in Admin → Novels, pick its genres and save. Saving also refreshes `catalog/home`, so Home/Browse show the new genres. No rules or index changes are needed (only admins write novels).
+- **Tests:** `npx tsx tests/genres.test.ts`

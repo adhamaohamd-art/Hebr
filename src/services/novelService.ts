@@ -1,3 +1,4 @@
+import { novelHasGenre, genreFieldsForSave } from '../lib/genres';
 import {
   collection,
   doc,
@@ -75,6 +76,7 @@ function toCatalogItem(novel: Novel): CatalogNovel {
     authorEn: novel.authorEn,
     genre: novel.genre,
     genreEn: novel.genreEn,
+    genres: novel.genres,
     status: novel.status,
     description: descTrimmed,
     descriptionEn: descEnTrimmed,
@@ -145,7 +147,7 @@ export const novelService = {
     if (options?.publishedOnly) {
       let filtered = await this.getCatalog();
       if (options?.genre && options.genre !== 'الكل') {
-        filtered = filtered.filter(n => n.genre === options.genre);
+        filtered = filtered.filter(n => novelHasGenre(n, options.genre as string));
       }
       if (options?.status && options.status !== 'الكل') {
         filtered = filtered.filter(n => n.status === options.status);
@@ -167,7 +169,7 @@ export const novelService = {
     });
     return list
       .filter(n => {
-        if (options?.genre && options.genre !== 'الكل' && n.genre !== options.genre) return false;
+        if (options?.genre && options.genre !== 'الكل' && !novelHasGenre(n, options.genre)) return false;
         if (options?.status && options.status !== 'الكل' && n.status !== options.status) return false;
         return true;
       })
@@ -268,6 +270,8 @@ export const novelService = {
     // Never write back derived/stale fields coming from the edit form.
     const editable: Record<string, unknown> = { ...novelData };
     for (const key of NON_EDITABLE_NOVEL_FIELDS) delete editable[key];
+    // Several genres per novel: store them all, and keep genre/genreEn = the first one for older code.
+    if ('genres' in editable) Object.assign(editable, genreFieldsForSave(editable.genres));
 
     await runTransaction(db, async tx => {
       const novelSnap = await tx.get(novelRef);

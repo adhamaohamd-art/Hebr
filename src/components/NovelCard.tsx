@@ -8,6 +8,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { libraryService } from '../services/libraryService';
 import { getLocalizedNovelField } from '../i18n/translations';
 import { getNovelRatingSummary } from '../lib/rating';
+import { getLocalizedGenres } from '../lib/genres';
 
 interface NovelCardProps {
   novel: Novel;
@@ -22,7 +23,7 @@ export const NovelCard: React.FC<NovelCardProps> = ({ novel, compact = false }) 
 
   const title = getLocalizedNovelField(novel, 'title', language);
   const author = getLocalizedNovelField(novel, 'author', language);
-  const genre = getLocalizedNovelField(novel, 'genre', language);
+  const genre = getLocalizedGenres(novel, language).slice(0, 2).join(' · ');
   const statusLabel = t.statusLabels[novel.status] || novel.status;
 
   const handleBookmark = async (e: React.MouseEvent) => {

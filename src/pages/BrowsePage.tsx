@@ -8,8 +8,9 @@ import { novelService } from '../services/novelService';
 import { Novel } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 import { LIMITS } from '../config';
+import { GENRE_KEYS, novelHasGenre } from '../lib/genres';
 
-const canonicalGenres = ['الكل', 'رومانسية', 'دراما', 'فانتازيا', 'غموض', 'اجتماعية', 'تشويق', 'تاريخي'];
+const canonicalGenres = ['الكل', ...GENRE_KEYS];
 const canonicalStatuses = ['الكل', 'مستمرة', 'مكتملة'];
 
 export const BrowsePage: React.FC = () => {
@@ -50,7 +51,7 @@ export const BrowsePage: React.FC = () => {
         novel.description.toLowerCase().includes(q) ||
         (novel.descriptionEn && novel.descriptionEn.toLowerCase().includes(q))
       );
-      const matchesGenre = genre === 'الكل' || novel.genre === genre || (novel.genreEn && novel.genreEn === genre);
+      const matchesGenre = genre === 'الكل' || novelHasGenre(novel, genre);
       const matchesStatus = status === 'الكل' || novel.status === status;
       return matchesQuery && matchesGenre && matchesStatus;
     });

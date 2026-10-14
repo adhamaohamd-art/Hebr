@@ -7,7 +7,8 @@
       "properties": {
         "title": { "type": "string" },
         "author": { "type": "string" },
-        "genre": { "type": "string" },
+        "genre": { "type": "string", "description": "Primary genre (first of genres); kept for older data" },
+        "genres": { "type": "array", "items": { "type": "string" }, "description": "All genres of the novel (up to 5)" },
         "status": { "type": "string", "enum": ["مستمرة", "مكتملة"] },
         "description": { "type": "string" },
         "novelPrice": { "type": "number" },
