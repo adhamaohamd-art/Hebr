@@ -67,36 +67,34 @@ export const NovelCard: React.FC<NovelCardProps> = ({ novel, compact = false }) 
         <div className="card-bottom">
           <span>{novel.chaptersCount} {t.common.chaptersCount}</span>
           <div className="flex items-center gap-2">
-            {ratingSummary.hasRatings && (
-              <span
-                className={`rating text-xs flex items-center gap-1 ${
-                  ratingSummary.isEditorial ? 'text-amber-800 font-semibold' : 'text-amber-600'
-                }`}
-                title={ratingSummary.isEditorial ? t.novelReviews.editorialRatingBadge : ''}
-              >
-                <span>★ {ratingSummary.displayAverage}</span>
-                {ratingSummary.isCombined && (
-                  <span className="text-[9px] bg-amber-100 text-amber-900 px-1 py-0.2 rounded font-sans font-medium">
-                    {language === 'ar' ? `مدمج (${ratingSummary.totalCount})` : `Combined (${ratingSummary.totalCount})`}
+            <span
+              className="rating inline-flex items-center gap-1.5 text-xs"
+              aria-label={ratingSummary.hasRatings
+                ? `${ratingSummary.displayAverage} / 5, ${ratingSummary.visitorCount} ${language === 'ar' ? 'تقييم' : 'ratings'}`
+                : (language === 'ar' ? 'لا توجد تقييمات بعد' : 'No ratings yet')}
+              title={ratingSummary.hasRatings
+                ? `${ratingSummary.displayAverage} / 5`
+                : (language === 'ar' ? 'لا توجد تقييمات بعد' : 'No ratings yet')}
+            >
+              <span className="inline-flex items-center gap-0.5" aria-hidden="true">
+                {[1, 2, 3, 4, 5].map(star => (
+                  <span
+                    key={star}
+                    className={ratingSummary.hasRatings && star <= Math.round(ratingSummary.average || 0)
+                      ? 'text-amber-500'
+                      : 'text-stone-300'}
+                  >
+                    ★
                   </span>
-                )}
-                {ratingSummary.isEditorial && (
-                  <span className="text-[9px] bg-amber-700 text-white px-1 py-0.2 rounded font-sans">
-                    {language === 'ar' ? 'تحرير' : 'Editorial'}
-                  </span>
-                )}
-                {ratingSummary.isCustom && (
-                  <span className="text-[9px] bg-stone-200 text-stone-800 px-1 py-0.2 rounded font-sans">
-                    {language === 'ar' ? 'مخصص' : 'Custom'}
-                  </span>
-                )}
-                {ratingSummary.isVisitorOnly && ratingSummary.visitorCount > 0 && (
-                  <span className="text-[10px] text-[var(--muted)] font-normal">
-                    ({ratingSummary.visitorCount})
-                  </span>
-                )}
+                ))}
               </span>
-            )}
+              <span className="font-semibold text-stone-700">
+                {ratingSummary.hasRatings ? ratingSummary.displayAverage : '—'}
+              </span>
+              <span className="text-[10px] text-[var(--muted)]">
+                ({ratingSummary.visitorCount})
+              </span>
+            </span>
             {novel.novelPrice ? (
               <span className="font-semibold text-[var(--green)]">
                 {novel.novelPrice} {t.common.currency}

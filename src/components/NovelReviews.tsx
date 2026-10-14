@@ -167,6 +167,7 @@ export const NovelReviews: React.FC<NovelReviewsProps> = ({ novel, onRatingUpdat
     if (!window.confirm(t.novelReviews.confirmDeleteReview)) return;
     try {
       setSubmitting(true);
+      setActionNotice(null);
       const ok = await reviewService.deleteUserReview(novel.id, user.uid);
       if (ok) {
         setUserReview(null);
@@ -176,7 +177,12 @@ export const NovelReviews: React.FC<NovelReviewsProps> = ({ novel, onRatingUpdat
         setActionNotice({ type: 'success', msg: t.novelReviews.reviewDeletedSuccess });
         await fetchReviews(starFilter);
         if (onRatingUpdated) onRatingUpdated();
+      } else {
+        setActionNotice({ type: 'error', msg: t.common.error });
       }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t.common.error;
+      setActionNotice({ type: 'error', msg });
     } finally {
       setSubmitting(false);
       setTimeout(() => setActionNotice(null), 4000);

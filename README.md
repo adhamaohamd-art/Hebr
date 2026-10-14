@@ -129,3 +129,15 @@ npm run typecheck
 npm run build
 ```
 المشروع مبني ومعالج بنسبة 100% بدون أي أخطاء برمجية أو تحذيرات نوعية.
+
+## Traditional star ratings
+
+The public rating display uses the normal 1–5 star average and the number of published reader ratings. A reader can submit one rating per novel and edit that rating later; editing does not create an extra rating. Hidden or deleted reviews are excluded from the public average.
+
+The review queries require the composite indexes listed in `firestore.indexes.json`. Deploy the updated Firestore rules and indexes with:
+
+```bash
+firebase deploy --only firestore:rules,firestore:indexes
+```
+
+This command deploys Firestore rules and indexes only; it does not deploy website hosting.

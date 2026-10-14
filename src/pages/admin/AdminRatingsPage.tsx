@@ -94,14 +94,23 @@ export const AdminRatingsPage: React.FC = () => {
       return;
     }
     setReviewsLoading(true);
-    const list = await reviewService.getAdminReviews({ novelId, limitCount: 300 });
-    list.sort((a, b) => {
-      const ta = (a.createdAt as { toMillis?: () => number } | null)?.toMillis?.() ?? 0;
-      const tb = (b.createdAt as { toMillis?: () => number } | null)?.toMillis?.() ?? 0;
-      return tb - ta;
-    });
-    setReviews(list);
-    setReviewsLoading(false);
+    try {
+      const list = await reviewService.getAdminReviews({ novelId, limitCount: 300 });
+      list.sort((a, b) => {
+        const ta = (a.createdAt as { toMillis?: () => number } | null)?.toMillis?.() ?? 0;
+        const tb = (b.createdAt as { toMillis?: () => number } | null)?.toMillis?.() ?? 0;
+        return tb - ta;
+      });
+      setReviews(list);
+    } catch (err: unknown) {
+      setReviews([]);
+      setNotice({
+        type: 'error',
+        message: err instanceof Error ? err.message : tr('تعذر تحميل التقييمات.', 'Could not load ratings.'),
+      });
+    } finally {
+      setReviewsLoading(false);
+    }
   }, []);
 
   useEffect(() => {
