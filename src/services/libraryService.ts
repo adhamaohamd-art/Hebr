@@ -92,13 +92,10 @@ export const libraryService = {
       });
       return ent;
     } catch (err) {
-      console.warn('Firestore getUserEntitlement notice:', err);
-      // Cache null on permission or read errors as well to prevent spamming
-      entitlementCache.set(key, {
-        entitlement: null,
-        expiresAt: Date.now() + ENTITLEMENT_CACHE_TTL_MS,
-      });
-      return null;
+      // Never cache a failure: a paying reader must not be locked out by one transient error.
+      // The caller shows a friendly retry state.
+      if (import.meta.env.DEV) console.warn('Firestore getUserEntitlement notice:', err);
+      throw err;
     }
   },
 

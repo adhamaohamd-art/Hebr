@@ -237,7 +237,7 @@ export const AdminPlansCouponsPage: React.FC = () => {
               className="w-full p-2 border border-[var(--line)] text-xs uppercase font-mono"
             />
             <span className="text-[10px] text-[var(--muted)] block text-end mt-0.5">
-              {couponCode.length} / {LIMITS.couponCodeMax}
+              <bdi dir="ltr">{couponCode.length} / {LIMITS.couponCodeMax}</bdi>
             </span>
           </div>
 

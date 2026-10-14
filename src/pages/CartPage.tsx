@@ -146,7 +146,7 @@ export const CartPage: React.FC = () => {
                 </button>
               </form>
               <span className="text-[10px] text-[var(--muted)] text-end">
-                {couponInput.length} / {LIMITS.couponCodeMax}
+                <bdi dir="ltr">{couponInput.length} / {LIMITS.couponCodeMax}</bdi>
               </span>
 
               {couponMsg && (

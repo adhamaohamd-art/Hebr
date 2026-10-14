@@ -55,6 +55,7 @@ function paragraphsHtml(body: string): string {
 
 export function safeFileName(title: string): string {
   const cleaned = (title || '')
+    // eslint-disable-next-line no-control-regex -- control characters are intentionally stripped from file names
     .replace(/[\\/:*?"<>|\u0000-\u001F]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()

@@ -172,7 +172,7 @@ export const LoginPage: React.FC = () => {
                 className="w-full p-2.5 text-xs border border-[var(--line)] bg-white outline-none focus:border-[var(--green)]"
               />
               <span className="text-[10px] text-[var(--muted)] block text-end mt-0.5">
-                {name.length} / {LIMITS.displayNameMax}
+                <bdi dir="ltr">{name.length} / {LIMITS.displayNameMax}</bdi>
               </span>
             </div>
           )}
@@ -191,7 +191,7 @@ export const LoginPage: React.FC = () => {
               className="w-full p-2.5 text-xs border border-[var(--line)] bg-white outline-none focus:border-[var(--green)]"
             />
             <span className="text-[10px] text-[var(--muted)] block text-end mt-0.5">
-              {email.length} / {LIMITS.emailMax}
+              <bdi dir="ltr">{email.length} / {LIMITS.emailMax}</bdi>
             </span>
           </div>
 
@@ -210,7 +210,7 @@ export const LoginPage: React.FC = () => {
               className="w-full p-2.5 text-xs border border-[var(--line)] bg-white outline-none focus:border-[var(--green)]"
             />
             <span className="text-[10px] text-[var(--muted)] block text-end mt-0.5">
-              {password.length} / {LIMITS.passwordMax}
+              <bdi dir="ltr">{password.length} / {LIMITS.passwordMax}</bdi>
             </span>
           </div>
 

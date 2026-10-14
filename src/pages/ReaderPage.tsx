@@ -39,7 +39,7 @@ export const ReaderPage: React.FC = () => {
   const { id: novelId, n: chapterNumberStr } = useParams<{ id: string; n: string }>();
   const chapterNumber = Number(chapterNumberStr) || 1;
   const navigate = useNavigate();
-  const { user, profile, isAdmin, loading: authLoading, sendVerificationEmail } = useAuth();
+  const { user, profile, isAdmin, loading: authLoading, sendVerificationEmail, emailVerified, reloadUser } = useAuth();
   const { addToCart } = useCart();
   const { t, language, rtl } = useLanguage();
 
@@ -65,6 +65,8 @@ export const ReaderPage: React.FC = () => {
   const [commentError, setCommentError] = useState('');
   const [resendingVerification, setResendingVerification] = useState(false);
   const [resendVerificationSent, setResendVerificationSent] = useState(false);
+  const [verifyChecking, setVerifyChecking] = useState(false);
+  const [verifyMessage, setVerifyMessage] = useState('');
 
   // Directional icons
   const BackArrow = rtl ? ArrowRight : ArrowLeft;
@@ -216,7 +218,7 @@ export const ReaderPage: React.FC = () => {
       navigate('/login');
       return;
     }
-    if (!user.emailVerified) {
+    if (!emailVerified) {
       setCommentError(t.common.emailNotVerifiedComment);
       return;
     }
@@ -298,6 +300,14 @@ export const ReaderPage: React.FC = () => {
     } finally {
       setLoadingMoreComments(false);
     }
+  };
+
+  const handleCheckVerified = async () => {
+    setVerifyChecking(true);
+    setVerifyMessage('');
+    const ok = await reloadUser();
+    setVerifyMessage(ok ? t.common.verifiedCheckSuccess : t.common.verifiedCheckStillNot);
+    setVerifyChecking(false);
   };
 
   const handleResendVerification = async () => {
@@ -621,7 +631,7 @@ export const ReaderPage: React.FC = () => {
           <h3 className="font-serif text-2xl mb-6">{t.reader.commentsTitle}</h3>
 
           {/* Email verification notice for commenting */}
-          {user && !user.emailVerified && (
+          {user && !emailVerified && (
             <div className="mb-4 p-3 bg-amber-50 text-amber-900 border border-amber-200 text-xs flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-1.5">
                 <AlertCircle size={14} className="shrink-0 text-amber-700" />
@@ -640,7 +650,18 @@ export const ReaderPage: React.FC = () => {
                   ? t.common.verifyEmailSentSuccess
                   : t.common.verifyEmailResendBtn}
               </button>
+              <button
+                type="button"
+                onClick={handleCheckVerified}
+                disabled={verifyChecking}
+                className="underline font-semibold text-amber-800 hover:text-amber-950"
+              >
+                {verifyChecking ? t.common.verifiedCheckChecking : t.common.verifiedCheckBtn}
+              </button>
             </div>
+          )}
+          {user && verifyMessage && (
+            <p className="mb-4 text-xs text-[var(--muted)]" role="status">{verifyMessage}</p>
           )}
 
           {/* Add comment form */}
@@ -661,7 +682,7 @@ export const ReaderPage: React.FC = () => {
               />
               <div className="flex justify-between items-center mt-2">
                 <span className="text-[11px] text-[var(--muted)]">
-                  {newCommentText.length} / {LIMITS.commentMax}
+                  <bdi dir="ltr">{newCommentText.length} / {LIMITS.commentMax}</bdi>
                 </span>
                 <button
                   type="submit"

@@ -23,9 +23,12 @@ import { isValidEgyptianPhone, isValidTransactionRef } from '../lib/sanitize';
 import { LIMITS } from '../config';
 import { PaymentMethod, SiteSettings } from '../types';
 
+/** Arabic-Indic digits (٠١٢٣…) -> Latin digits, so Egyptian keyboards produce valid numbers. */
+const toLatinDigits = (v: string) => v.replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660));
+
 export const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, profile, refreshProfile, sendVerificationEmail } = useAuth();
+  const { user, profile, refreshProfile, sendVerificationEmail, emailVerified, reloadUser } = useAuth();
   const { cart, total, discount, appliedCoupon, clearCart } = useCart();
   const { t, language, rtl } = useLanguage();
 
@@ -39,11 +42,22 @@ export const CheckoutPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [resendingVerification, setResendingVerification] = useState(false);
   const [resendVerificationSent, setResendVerificationSent] = useState(false);
+  const [verifyChecking, setVerifyChecking] = useState(false);
+  const [verifyMessage, setVerifyMessage] = useState('');
 
   const BackArrow = rtl ? ArrowRight : ArrowLeft;
   const ForwardArrow = rtl ? ArrowLeft : ArrowRight;
   const paymentUnavailable =
     paymentMethod === 'vodafone_cash' ? !settings.vodafoneCashNumber : !settings.instapayHandle;
+
+  const handleCheckVerified = async () => {
+    setVerifyChecking(true);
+    setVerifyMessage('');
+    const ok = await reloadUser();
+    setVerifyMessage(ok ? t.common.verifiedCheckSuccess : t.common.verifiedCheckStillNot);
+    if (ok) setErrorMsg('');
+    setVerifyChecking(false);
+  };
 
   const handleResendVerification = async () => {
     try {
@@ -79,7 +93,7 @@ export const CheckoutPage: React.FC = () => {
     e.preventDefault();
     if (!user) return;
 
-    if (!user.emailVerified) {
+    if (!emailVerified) {
       setErrorMsg(t.common.emailNotVerifiedOrder);
       return;
     }
@@ -194,7 +208,7 @@ export const CheckoutPage: React.FC = () => {
       </div>
 
       {/* Email Verification Warning */}
-      {user && !user.emailVerified && (
+      {user && !emailVerified && (
         <div className="mb-6 p-4 bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <AlertCircle size={16} className="text-amber-700 shrink-0" />
@@ -213,7 +227,18 @@ export const CheckoutPage: React.FC = () => {
               ? t.common.verifyEmailSentSuccess
               : t.common.verifyEmailResendBtn}
           </button>
+          <button
+            type="button"
+            onClick={handleCheckVerified}
+            disabled={verifyChecking}
+            className="font-medium underline hover:text-amber-950"
+          >
+            {verifyChecking ? t.common.verifiedCheckChecking : t.common.verifiedCheckBtn}
+          </button>
         </div>
+      )}
+      {user && verifyMessage && (
+        <p className="mb-4 text-xs text-[var(--muted)]" role="status">{verifyMessage}</p>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-start">
@@ -314,7 +339,7 @@ export const CheckoutPage: React.FC = () => {
                 value={senderPhone}
                 maxLength={LIMITS.senderPhoneMax}
                 onChange={e => {
-                  setSenderPhone(e.target.value);
+                  setSenderPhone(toLatinDigits(e.target.value).replace(/\D/g, '').slice(0, LIMITS.senderPhoneMax));
                   setErrorMsg('');
                 }}
                 placeholder={t.checkout.senderPhonePlaceholder}
@@ -323,7 +348,7 @@ export const CheckoutPage: React.FC = () => {
               />
               <div className="flex justify-between items-center text-[11px] text-[var(--muted)] mt-1">
                 <span>{t.checkout.senderPhoneHint}</span>
-                <span className="font-mono">{senderPhone.length} / {LIMITS.senderPhoneMax}</span>
+                <span className="font-mono"><bdi dir="ltr">{senderPhone.length} / {LIMITS.senderPhoneMax}</bdi></span>
               </div>
             </div>
 
@@ -337,7 +362,7 @@ export const CheckoutPage: React.FC = () => {
                 value={transactionRef}
                 maxLength={LIMITS.transactionRefMax}
                 onChange={e => {
-                  setTransactionRef(e.target.value);
+                  setTransactionRef(toLatinDigits(e.target.value).replace(/[^A-Za-z0-9-]/g, '').slice(0, LIMITS.transactionRefMax));
                   setErrorMsg('');
                 }}
                 placeholder={t.checkout.transactionRefPlaceholder}
@@ -346,7 +371,7 @@ export const CheckoutPage: React.FC = () => {
               />
               <div className="flex justify-between items-center text-[11px] text-[var(--muted)] mt-1">
                 <span>{t.checkout.transactionRefHint}</span>
-                <span className="font-mono">{transactionRef.length} / {LIMITS.transactionRefMax}</span>
+                <span className="font-mono"><bdi dir="ltr">{transactionRef.length} / {LIMITS.transactionRefMax}</bdi></span>
               </div>
             </div>
 
@@ -363,7 +388,7 @@ export const CheckoutPage: React.FC = () => {
                 className="w-full p-2.5 border border-[var(--line)] text-xs"
               />
               <span className="text-[11px] text-[var(--muted)] block text-end">
-                {note.length} / 140
+                <bdi dir="ltr">{note.length} / 140</bdi>
               </span>
             </div>
 

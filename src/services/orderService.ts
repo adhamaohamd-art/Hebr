@@ -5,6 +5,7 @@ import {
   getDocs,
   setDoc,
   query,
+  where,
   orderBy,
   serverTimestamp,
   writeBatch,
@@ -120,20 +121,23 @@ export const orderService = {
   async getOrders(userId?: string): Promise<Order[]> {
     try {
       const colRef = collection(db, 'orders');
-      const q = query(colRef, orderBy('createdAt', 'desc'));
+      // Regular users may only read their own orders (rules), so the query itself must be
+      // filtered by userId; a whole-collection query is denied for non-admins.
+      const q = userId
+        ? query(colRef, where('userId', '==', userId), orderBy('createdAt', 'desc'))
+        : query(colRef, orderBy('createdAt', 'desc'));
       const snap = await getDocs(q);
       const list: Order[] = [];
       snap.forEach(d => {
-        const data = d.data() as Omit<Order, 'id'>;
-        if (!userId || data.userId === userId) {
-          list.push({ id: d.id, ...data });
-        }
+        list.push({ id: d.id, ...(d.data() as Omit<Order, 'id'>) });
       });
       return list;
     } catch (err) {
       if (import.meta.env.DEV) {
         console.warn('Firestore getOrders notice:', err);
       }
+      // A user's own orders must never silently look empty (it would bypass the pending-order limit).
+      if (userId) throw err;
       return [];
     }
   },

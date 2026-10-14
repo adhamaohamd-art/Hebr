@@ -441,7 +441,7 @@ export const NovelReviews: React.FC<NovelReviewsProps> = ({ novel, onRatingUpdat
                 className="w-full p-3 border border-[var(--line)] text-xs bg-white focus:outline-none focus:border-[var(--green)] resize-y"
               />
               <div className="text-end text-[10px] text-[var(--muted)]">
-                {reviewText.length} / 1000
+                <bdi dir="ltr">{reviewText.length} / 1000</bdi>
               </div>
             </div>
 

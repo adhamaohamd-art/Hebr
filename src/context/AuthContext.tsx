@@ -26,7 +26,9 @@ interface AuthContextType {
   signInWithEmail: (e: string, p: string) => Promise<void>;
   signUpWithEmail: (e: string, p: string, name: string) => Promise<void>;
   sendVerificationEmail: () => Promise<void>;
-  reloadUser: () => Promise<void>;
+  /** Reloads the user AND refreshes the ID token so Firestore rules see the new email_verified claim. */
+  reloadUser: () => Promise<boolean>;
+  emailVerified: boolean;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -38,11 +40,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
+  const [emailVerified, setEmailVerified] = useState<boolean>(false);
 
   // Synchronize profile and admin status once per session when auth state changes (no persistent listener)
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      setEmailVerified(Boolean(currentUser?.emailVerified));
       if (!currentUser) {
         setProfile(null);
         setIsAdmin(false);
@@ -97,7 +101,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       libraryService.invalidateEntitlementCache(auth.currentUser.uid);
       await auth.currentUser.reload();
+      // email_verified lives inside the ID token: force a refresh so the security rules see it.
+      await auth.currentUser.getIdToken(true);
       setUser(auth.currentUser);
+      setEmailVerified(auth.currentUser.emailVerified);
 
       const snap = await getDoc(doc(db, 'users', auth.currentUser.uid));
       if (snap.exists()) {
@@ -112,14 +119,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const reloadUser = async () => {
-    if (auth.currentUser) {
-      try {
-        await auth.currentUser.reload();
-        setUser(auth.currentUser);
-      } catch (e) {
-        if (import.meta.env.DEV) console.warn('Error reloading auth user:', e);
-      }
+  const reloadUser = async (): Promise<boolean> => {
+    if (!auth.currentUser) return false;
+    try {
+      await auth.currentUser.reload();
+      await auth.currentUser.getIdToken(true); // otherwise rules keep seeing email_verified=false for up to 1h
+      setUser(auth.currentUser);
+      const verified = auth.currentUser.emailVerified;
+      setEmailVerified(verified);
+      return verified;
+    } catch (e) {
+      if (import.meta.env.DEV) console.warn('Error reloading auth user:', e);
+      return false;
     }
   };
 
@@ -170,6 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await firebaseSignOut(auth);
     setProfile(null);
     setIsAdmin(false);
+    setEmailVerified(false);
   };
 
   const subscription = profile?.subscription || null;
@@ -184,6 +196,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         subscription,
         isSubscribed,
         loading,
+        emailVerified,
         signInWithGoogle,
         signInWithEmail,
         signUpWithEmail,

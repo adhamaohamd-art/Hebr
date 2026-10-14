@@ -35,12 +35,12 @@ const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage').t
 import { AlertCircle, Mail, RefreshCw } from 'lucide-react';
 
 const EmailBanner: React.FC = () => {
-  const { user, sendVerificationEmail, reloadUser } = useAuth();
+  const { user, emailVerified, sendVerificationEmail, reloadUser } = useAuth();
   const { t } = useLanguage();
   const [resending, setResending] = React.useState(false);
   const [sent, setSent] = React.useState(false);
 
-  if (!user || user.emailVerified) return null;
+  if (!user || emailVerified) return null;
 
   const handleResend = async () => {
     try {

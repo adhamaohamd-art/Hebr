@@ -69,6 +69,10 @@ export interface Translations {
     verifyEmailNotice: string;
     verifyEmailResendBtn: string;
     verifyEmailSentSuccess: string;
+    verifiedCheckBtn: string;
+    verifiedCheckChecking: string;
+    verifiedCheckStillNot: string;
+    verifiedCheckSuccess: string;
     emailNotVerifiedComment: string;
     emailNotVerifiedOrder: string;
     loadMoreComments: string;
@@ -911,6 +915,10 @@ export const translations: Record<Language, Translations> = {
       verifyEmailNotice: 'يرجى تأكيد بريدك الإلكتروني لتتمكن من إضافة التعليقات وإتمام طلبات الاقتناء.',
       verifyEmailResendBtn: 'إعادة إرسال رابط التأكيد',
       verifyEmailSentSuccess: 'تم إرسال رابط التأكيد إلى بريدك الإلكتروني',
+      verifiedCheckBtn: 'لقد أكّدت بريدي',
+      verifiedCheckChecking: 'جارٍ التحقق...',
+      verifiedCheckStillNot: 'لم يتم التأكيد بعد. افتح الرابط المرسل إلى بريدك ثم أعد المحاولة.',
+      verifiedCheckSuccess: 'تم تأكيد بريدك الإلكتروني بنجاح.',
       emailNotVerifiedComment: 'يجب تأكيد بريدك الإلكتروني أولاً لتتمكن من إضافة التعليقات.',
       emailNotVerifiedOrder: 'يجب تأكيد بريدك الإلكتروني أولاً قبل إتمام الطلب.',
       loadMoreComments: 'تحميل المزيد من التعليقات',
@@ -1777,6 +1785,10 @@ export const translations: Record<Language, Translations> = {
       verifyEmailNotice: 'Please verify your email address to enable posting comments and completing orders.',
       verifyEmailResendBtn: 'Resend Verification Email',
       verifyEmailSentSuccess: 'Verification email has been sent to your inbox',
+      verifiedCheckBtn: 'I have verified my email',
+      verifiedCheckChecking: 'Checking...',
+      verifiedCheckStillNot: 'Not verified yet. Open the link sent to your inbox, then try again.',
+      verifiedCheckSuccess: 'Your email has been verified.',
       emailNotVerifiedComment: 'You must verify your email address before posting comments.',
       emailNotVerifiedOrder: 'You must verify your email address before completing your order.',
       loadMoreComments: 'Load more comments',
