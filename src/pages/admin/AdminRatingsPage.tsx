@@ -47,6 +47,7 @@ export const AdminRatingsPage: React.FC = () => {
   const [savingGlobal, setSavingGlobal] = useState(false);
   const [savingNovel, setSavingNovel] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
+  const [maintenanceBusy, setMaintenanceBusy] = useState(false);
 
   const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
@@ -204,6 +205,37 @@ export const AdminRatingsPage: React.FC = () => {
     }
   };
 
+  const handleResyncAll = async () => {
+    if (!window.confirm(tr(
+      'سيتم إعادة حساب تقييمات كل الروايات من مراجعات القراء وتحديث الصفحة الرئيسية. قد تستهلك عدداً من القراءات. متابعة؟',
+      'This recalculates every novel\'s ratings from reader reviews and refreshes the home page. It uses a number of reads. Continue?'
+    ))) return;
+    setMaintenanceBusy(true);
+    setNotice(null);
+    try {
+      const n = await reviewService.resyncAllNovelAggregates();
+      await loadNovels();
+      setNotice({ type: 'success', message: tr(`تمت مزامنة تقييمات ${n} رواية وتحديث الصفحة الرئيسية.`, `Synced ratings for ${n} novels and refreshed the home page.`) });
+    } catch {
+      setNotice({ type: 'error', message: tr('تعذرت المزامنة.', 'Sync failed.') });
+    } finally {
+      setMaintenanceBusy(false);
+    }
+  };
+
+  const handleScrubEmails = async () => {
+    setMaintenanceBusy(true);
+    setNotice(null);
+    try {
+      const n = await reviewService.scrubReviewEmails();
+      setNotice({ type: 'success', message: tr(`تم حذف الإيميل من ${n} مراجعة قديمة.`, `Removed the email from ${n} old reviews.`) });
+    } catch {
+      setNotice({ type: 'error', message: tr('تعذر تنظيف المراجعات القديمة.', 'Could not clean old reviews.') });
+    } finally {
+      setMaintenanceBusy(false);
+    }
+  };
+
   const runModeration = async (review: Review, action: 'hide' | 'publish' | 'delete', reason = '') => {
     setBusyReviewId(review.id);
     setNotice(null);
@@ -245,6 +277,16 @@ export const AdminRatingsPage: React.FC = () => {
             'Ratings come from readers only. You can hide, restore or delete any review and the novel average is recalculated automatically.'
           )}
         </p>
+      </div>
+
+      <div className="bg-white border border-[var(--line)] p-4 flex flex-wrap items-center gap-3">
+        <button type="button" disabled={maintenanceBusy} onClick={handleResyncAll} className="outline-button small flex items-center gap-1.5">
+          <RefreshCw size={13} className={maintenanceBusy ? 'animate-spin' : ''} />
+          {tr('مزامنة كل التقييمات مع الصفحة الرئيسية', 'Sync all ratings to the home page')}
+        </button>
+        <button type="button" disabled={maintenanceBusy} onClick={handleScrubEmails} className="outline-button small">
+          {tr('حذف الإيميلات من المراجعات القديمة (مرة واحدة)', 'Remove emails from old reviews (one-off)')}
+        </button>
       </div>
 
       {notice && (

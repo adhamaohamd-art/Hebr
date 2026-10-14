@@ -13,12 +13,26 @@ import {
   serverTimestamp,
   updateDoc,
   increment,
+  runTransaction,
+  writeBatch,
+  deleteField,
   DocumentSnapshot,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth, getFriendlyErrorMessage } from '../lib/firebase';
 import { clientCache } from '../lib/cache';
 import { Review, ModerationReport, RatingDistribution, Novel } from '../types';
 import { settingsService } from './settingsService';
+import { novelService } from './novelService';
+import { applyRatingChange } from '../lib/rating';
+
+/** Business-rule failure with a message that is safe to show to the reader. */
+class ReviewFlowError extends Error {}
+
+/** Normalizes a stored rating to an integer 1..5, or null when it is not a valid star value. */
+function asStar(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null;
+}
 
 export interface PaginatedReviews {
   reviews: Review[];
@@ -52,8 +66,10 @@ export const reviewService = {
   },
 
   /**
-   * Recalculates genuine visitor rating aggregates from all published reviews of a novel.
-   * Never fabricates reviews or merges editorial ratings into genuine visitor averages.
+   * ADMIN ONLY (full resync). Recalculates genuine visitor rating aggregates from ALL published
+   * reviews of a novel (one read per review), then pushes the result to catalog/home.
+   * Ordinary rating submissions never call this: they update the aggregates incrementally
+   * inside a transaction (see submitOrUpdateReview).
    */
   async recalculateNovelAggregates(novelId: string): Promise<{
     average: number;
@@ -93,6 +109,8 @@ export const reviewService = {
         updatedAt: serverTimestamp(),
       });
       clientCache.invalidate('catalog_home');
+      clientCache.invalidate(`novel_${novelId}`);
+      await novelService.syncNovelToCatalog(novelId);
     } catch (err) {
       if (import.meta.env.DEV) console.warn('Could not update novel aggregates document:', err);
     }
@@ -102,23 +120,33 @@ export const reviewService = {
 
   /**
    * Submits or updates a visitor's genuine rating and review.
-   * Checks permissions, spam rate limits, and novel active status.
+   *
+   * The review and the novel's rating aggregates are written in ONE transaction, and the
+   * aggregates are adjusted incrementally (+/- this single rating) instead of re-reading every
+   * review. Cost per submission is a handful of reads regardless of how many reviews exist, and
+   * concurrent submissions cannot overwrite each other. firestore.rules enforce the same
+   * arithmetic, so the aggregates cannot be forged from the browser.
+   * The reader's email is deliberately NOT stored on the (publicly readable) review document.
    */
   async submitOrUpdateReview(params: {
     novelId: string;
     novelTitle: string;
     userId: string;
     userName: string;
-    userEmail?: string;
     rating: number;
     reviewText?: string;
   }): Promise<{ success: boolean; error?: string }> {
-    const { novelId, novelTitle, userId, userName, userEmail, rating, reviewText } = params;
+    const { novelId, novelTitle, userId, userName, rating, reviewText } = params;
 
     // Validation
     const cleanRating = Math.min(5, Math.max(1, Math.round(rating)));
     if (!cleanRating || isNaN(cleanRating)) {
       return { success: false, error: 'التقييم يجب أن يكون بين 1 و 5 نجوم.' };
+    }
+
+    // firestore.rules require a verified email for ratings
+    if (auth.currentUser && !auth.currentUser.emailVerified) {
+      return { success: false, error: 'يرجى تأكيد بريدك الإلكتروني أولاً لتتمكن من تقييم الروايات.' };
     }
 
     // Check site-wide settings
@@ -148,34 +176,27 @@ export const reviewService = {
       // Proceed if read fails non-critically
     }
 
-    // Check novel-specific toggle
-    try {
-      const novelSnap = await getDoc(doc(db, 'novels', novelId));
-      if (novelSnap.exists()) {
-        const nData = novelSnap.data() as Novel;
-        if (nData.ratingsEnabled === false) {
-          return { success: false, error: 'التقييمات والمراجعات مغلقة حالياً لهذه الرواية.' };
-        }
-      }
-    } catch {
-      // Proceed
-    }
+    const docId = this.getReviewDocId(novelId, userId);
 
-    // Rate limiting: check recent reviews created by this user today
+    // Soft daily limit (client-side only; real abuse protection is the one-review-per-novel
+    // document id, the verified-email rule and optional App Check).
+    // Reads at most maxDaily + 1 of the user's most recent reviews.
     const maxDaily = settings.maxReviewsPerDayPerUser || 5;
     try {
-      const userReviewsQuery = query(
-        collection(db, 'reviews'),
-        where('userId', '==', userId),
-        limit(20)
+      const recentSnap = await getDocs(
+        query(
+          collection(db, 'reviews'),
+          where('userId', '==', userId),
+          orderBy('createdAt', 'desc'),
+          limit(maxDaily + 1)
+        )
       );
-      const userReviewsSnap = await getDocs(userReviewsQuery);
       const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
       let countToday = 0;
-      userReviewsSnap.forEach(snap => {
+      recentSnap.forEach(snap => {
         const d = snap.data();
         const createdMs = d.createdAt?.toMillis ? d.createdAt.toMillis() : (d.createdAt ? new Date(d.createdAt).getTime() : 0);
-        if (createdMs > oneDayAgo && snap.id !== this.getReviewDocId(novelId, userId)) {
+        if (createdMs > oneDayAgo && snap.id !== docId) {
           countToday++;
         }
       });
@@ -189,44 +210,106 @@ export const reviewService = {
       // proceed gracefully
     }
 
-    const docId = this.getReviewDocId(novelId, userId);
-    const existingSnap = await getDoc(doc(db, 'reviews', docId));
-    const now = serverTimestamp();
+    const reviewRef = doc(db, 'reviews', docId);
+    const novelRef = doc(db, 'novels', novelId);
+    const cleanText = (reviewText || '').trim().slice(0, 1000);
+    const cleanName = (userName || 'قارئ').slice(0, 60);
+    const cleanTitle = (novelTitle || '').slice(0, 100);
 
-    const reviewPayload: Partial<Review> = {
-      id: docId,
-      novelId,
-      novelTitle: novelTitle.slice(0, 100),
-      userId,
-      userName: (userName || 'قارئ').slice(0, 60),
-      userEmail: userEmail || '',
-      rating: cleanRating,
-      reviewText: (reviewText || '').trim().slice(0, 1000),
-      status: 'published',
-      updatedAt: now,
-    };
+    try {
+      await runTransaction(db, async tx => {
+        const novelSnap = await tx.get(novelRef);
+        const reviewSnap = await tx.get(reviewRef);
 
-    if (!existingSnap.exists()) {
-      reviewPayload.createdAt = now;
-      reviewPayload.reportCount = 0;
+        if (!novelSnap.exists()) {
+          throw new ReviewFlowError('هذه الرواية غير متاحة للتقييم.');
+        }
+        const novelData = novelSnap.data() as Novel;
+        if (novelData.ratingsEnabled === false) {
+          throw new ReviewFlowError('التقييمات والمراجعات مغلقة حالياً لهذه الرواية.');
+        }
+
+        let oldRating: number | null = null;
+        if (reviewSnap.exists()) {
+          const existing = reviewSnap.data() as Review;
+          if (existing.status !== 'published') {
+            throw new ReviewFlowError('تم إخفاء مراجعتك السابقة من الإدارة، ولا يمكن تعديلها.');
+          }
+          oldRating = asStar(existing.rating);
+        }
+
+        if (!reviewSnap.exists()) {
+          tx.set(reviewRef, {
+            id: docId,
+            novelId,
+            novelTitle: cleanTitle,
+            userId,
+            userName: cleanName,
+            rating: cleanRating,
+            reviewText: cleanText,
+            status: 'published',
+            reportCount: 0,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          tx.update(reviewRef, {
+            novelTitle: cleanTitle,
+            userName: cleanName,
+            rating: cleanRating,
+            reviewText: cleanText,
+            updatedAt: serverTimestamp(),
+            // Remove the email that older versions stored on this public document
+            userEmail: deleteField(),
+          });
+        }
+
+        // Only touch the novel when the star value actually changed
+        if (oldRating !== cleanRating) {
+          const agg = applyRatingChange(novelData, oldRating, cleanRating);
+          tx.update(novelRef, { ...agg, updatedAt: serverTimestamp() });
+        }
+      });
+    } catch (err) {
+      if (err instanceof ReviewFlowError) {
+        return { success: false, error: err.message };
+      }
+      if (err instanceof Error && err.message.includes('مزامنة')) {
+        return { success: false, error: err.message };
+      }
+      if (import.meta.env.DEV) console.warn('submitOrUpdateReview error:', err);
+      return { success: false, error: getFriendlyErrorMessage(err) };
     }
 
-    await setDoc(doc(db, 'reviews', docId), reviewPayload, { merge: true });
-
-    // Recalculate aggregates for this novel
-    await this.recalculateNovelAggregates(novelId);
-
+    clientCache.invalidate(`novel_${novelId}`);
     return { success: true };
   },
 
   /**
-   * Deletes a visitor's own review.
+   * Deletes a visitor's own review and removes its star from the novel aggregates
+   * (same transaction, same incremental arithmetic as submitOrUpdateReview).
    */
   async deleteUserReview(novelId: string, userId: string): Promise<boolean> {
     try {
-      const docId = this.getReviewDocId(novelId, userId);
-      await deleteDoc(doc(db, 'reviews', docId));
-      await this.recalculateNovelAggregates(novelId);
+      const reviewRef = doc(db, 'reviews', this.getReviewDocId(novelId, userId));
+      const novelRef = doc(db, 'novels', novelId);
+
+      await runTransaction(db, async tx => {
+        const novelSnap = await tx.get(novelRef);
+        const reviewSnap = await tx.get(reviewRef);
+        if (!reviewSnap.exists()) return;
+
+        const existing = reviewSnap.data() as Review;
+        const oldRating = existing.status === 'published' ? asStar(existing.rating) : null;
+
+        tx.delete(reviewRef);
+        if (oldRating !== null && novelSnap.exists()) {
+          const agg = applyRatingChange(novelSnap.data() as Novel, oldRating, null);
+          tx.update(novelRef, { ...agg, updatedAt: serverTimestamp() });
+        }
+      });
+
+      clientCache.invalidate(`novel_${novelId}`);
       return true;
     } catch (err) {
       if (import.meta.env.DEV) console.error('Error deleting user review:', err);
@@ -393,27 +476,55 @@ export const reviewService = {
     adminEmail: string
   ): Promise<{ success: boolean; message: string }> {
     try {
-      const snap = await getDoc(doc(db, 'reviews', reviewId));
+      const reviewRef = doc(db, 'reviews', reviewId);
+      const snap = await getDoc(reviewRef);
       if (!snap.exists()) {
         return { success: false, message: 'المراجعة غير موجودة.' };
       }
       const data = snap.data() as Review;
       const novelId = data.novelId;
+      const novelRef = doc(db, 'novels', novelId);
 
-      if (action === 'delete') {
-        await deleteDoc(doc(db, 'reviews', reviewId));
-      } else {
-        await updateDoc(doc(db, 'reviews', reviewId), {
-          status: action === 'hide' ? 'hidden' : 'published',
-          moderationReason: reason || (action === 'hide' ? 'مخالفة سياسة النشر' : ''),
-          moderatedAt: serverTimestamp(),
-          moderatedBy: adminEmail,
+      const moderationFields = {
+        status: action === 'hide' ? 'hidden' : 'published',
+        moderationReason: reason || (action === 'hide' ? 'مخالفة سياسة النشر' : ''),
+        moderatedAt: serverTimestamp(),
+        moderatedBy: adminEmail,
+      };
+
+      // Fast path: adjust the aggregates by this one review inside a transaction.
+      // Falls back to a full recalculation when the stored aggregates are inconsistent.
+      try {
+        await runTransaction(db, async tx => {
+          const novelSnap = await tx.get(novelRef);
+          const reviewSnap = await tx.get(reviewRef);
+          if (!reviewSnap.exists()) throw new ReviewFlowError('المراجعة غير موجودة.');
+
+          const current = reviewSnap.data() as Review;
+          const star = asStar(current.rating);
+          const oldCounted = current.status === 'published' ? star : null;
+          const newCounted = action === 'publish' ? star : null;
+
+          if (action === 'delete') tx.delete(reviewRef);
+          else tx.update(reviewRef, moderationFields);
+
+          if (oldCounted !== newCounted && novelSnap.exists()) {
+            const agg = applyRatingChange(novelSnap.data() as Novel, oldCounted, newCounted);
+            tx.update(novelRef, { ...agg, updatedAt: serverTimestamp() });
+          }
         });
+        clientCache.invalidate(`novel_${novelId}`);
+        await novelService.syncNovelToCatalog(novelId);
+      } catch (txErr) {
+        if (txErr instanceof ReviewFlowError) throw txErr;
+        if (import.meta.env.DEV) console.warn('Incremental moderation failed, falling back to full recalculation:', txErr);
+        if (action === 'delete') {
+          await deleteDoc(reviewRef);
+        } else {
+          await updateDoc(reviewRef, moderationFields);
+        }
+        await this.recalculateNovelAggregates(novelId);
       }
-
-      // Automatically recalculate novel genuine rating aggregates
-      // to reflect published reviews only!
-      await this.recalculateNovelAggregates(novelId);
 
       // Audit Log
       const auditId = `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -490,5 +601,34 @@ export const reviewService = {
       if (import.meta.env.DEV) console.error('resolveReport error:', err);
       return false;
     }
+  },
+
+  /**
+   * ADMIN ONLY. Full resync of every novel's rating aggregates from its published reviews,
+   * then refreshes catalog/home. Use after migrating old data or if the numbers ever look off.
+   */
+  async resyncAllNovelAggregates(): Promise<number> {
+    const novelsSnap = await getDocs(collection(db, 'novels'));
+    let done = 0;
+    for (const n of novelsSnap.docs) {
+      await this.recalculateNovelAggregates(n.id);
+      done++;
+    }
+    return done;
+  },
+
+  /**
+   * ADMIN ONLY, one-off. Removes the `userEmail` field that earlier versions stored on public
+   * review documents. Returns how many reviews were cleaned.
+   */
+  async scrubReviewEmails(): Promise<number> {
+    const snap = await getDocs(collection(db, 'reviews'));
+    const dirty = snap.docs.filter(d => Object.prototype.hasOwnProperty.call(d.data(), 'userEmail'));
+    for (let i = 0; i < dirty.length; i += 400) {
+      const batch = writeBatch(db);
+      dirty.slice(i, i + 400).forEach(d => batch.update(d.ref, { userEmail: deleteField() }));
+      await batch.commit();
+    }
+    return dirty.length;
   },
 };

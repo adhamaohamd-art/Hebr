@@ -292,6 +292,7 @@ export interface Review {
   novelTitle?: string;
   userId: string;
   userName: string;
+  /** @deprecated Legacy field; no longer stored (reviews are publicly readable). */
   userEmail?: string;
   rating: number; // 1 | 2 | 3 | 4 | 5
   reviewText?: string;

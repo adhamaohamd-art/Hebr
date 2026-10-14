@@ -30,6 +30,74 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscription.expiresAt > request.time.toMillis();
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Rating aggregates (novels/{id}) are maintained by the browser, so the rules re-check the
+    // arithmetic: the novel's counters may only move by exactly the effect of the reader's own
+    // review in the SAME batch/transaction (get = state before, getAfter = state after).
+    // ---------------------------------------------------------------------------------------
+
+    // Star counted for a review: its rating when published, otherwise 0 (not counted).
+    function countedStar(review) {
+      return review.status == 'published' ? review.rating : 0;
+    }
+
+    function starDelta(oldR, newR, star) {
+      return (newR == star ? 1 : 0) - (oldR == star ? 1 : 0);
+    }
+
+    function distMatches(before, after, oldR, newR) {
+      return after.keys().hasOnly(['1', '2', '3', '4', '5']) &&
+        after.get('1', 0) == before.get('1', 0) + starDelta(oldR, newR, 1) &&
+        after.get('2', 0) == before.get('2', 0) + starDelta(oldR, newR, 2) &&
+        after.get('3', 0) == before.get('3', 0) + starDelta(oldR, newR, 3) &&
+        after.get('4', 0) == before.get('4', 0) + starDelta(oldR, newR, 4) &&
+        after.get('5', 0) == before.get('5', 0) + starDelta(oldR, newR, 5) &&
+        after.get('1', 0) >= 0 && after.get('2', 0) >= 0 && after.get('3', 0) >= 0 &&
+        after.get('4', 0) >= 0 && after.get('5', 0) >= 0;
+    }
+
+    // The stored average must agree with the distribution (small tolerance for 2-decimal rounding).
+    function averageMatches(after) {
+      let c = after.get('visitorRatingCount', 0);
+      let d = after.get('ratingDistribution', {});
+      let points = d.get('1', 0) + 2 * d.get('2', 0) + 3 * d.get('3', 0) + 4 * d.get('4', 0) + 5 * d.get('5', 0);
+      let avg = after.get('visitorRatingAverage', 0);
+      return after.get('rating', '') is string &&
+        after.get('rating', '').size() <= 3 &&
+        (c == 0 ? avg == 0 : math.abs(avg * c - points) <= 0.005 * c + 0.01);
+    }
+
+    // True when novels/{novelId} changes by exactly "oldR -> newR" between get() and getAfter().
+    function novelAggregatesMatch(novelId, oldR, newR) {
+      let novelPath = /databases/$(database)/documents/novels/$(novelId);
+      let before = get(novelPath).data;
+      let after = getAfter(novelPath).data;
+      return after.get('visitorRatingCount', 0) ==
+          before.get('visitorRatingCount', 0) + (newR > 0 ? 1 : 0) - (oldR > 0 ? 1 : 0) &&
+        distMatches(before.get('ratingDistribution', {}), after.get('ratingDistribution', {}), oldR, newR) &&
+        (oldR == newR
+          ? (after.get('visitorRatingAverage', 0) == before.get('visitorRatingAverage', 0) &&
+             after.get('rating', '') == before.get('rating', ''))
+          : averageMatches(after));
+    }
+
+    // Keys a reader-written review may contain. NOTE: no email: reviews are publicly readable.
+    function reviewKeysAllowed() {
+      return request.resource.data.keys().hasOnly([
+        'id', 'novelId', 'novelTitle', 'userId', 'userName',
+        'rating', 'reviewText', 'status', 'moderationReason', 'moderatedAt',
+        'moderatedBy', 'reportCount', 'createdAt', 'updatedAt'
+      ]);
+    }
+
+    // Novel-side check: derive old/new star from the reader's own review document.
+    function novelAggregatesMatchForOwnReview(novelId) {
+      let revPath = /databases/$(database)/documents/reviews/$(novelId + '_' + request.auth.uid);
+      let oldR = (exists(revPath) && get(revPath).data.status == 'published') ? get(revPath).data.rating : 0;
+      let newR = (existsAfter(revPath) && getAfter(revPath).data.status == 'published') ? getAfter(revPath).data.rating : 0;
+      return novelAggregatesMatch(novelId, oldR, newR);
+    }
+
     // Catch-all default deny
     match /{document=**} {
       allow read, write: if false;
@@ -61,11 +129,14 @@ service cloud.firestore {
     match /novels/{novelId} {
       allow read: if resource.data.published == true || isAdmin();
       allow create, delete: if isAdmin();
+      // Readers may only move the rating counters by the effect of THEIR OWN review, written in
+      // the same batch/transaction (reviews/{novelId}_{uid}); see novelAggregatesMatch above.
       allow update: if isAdmin() || (
         isSignedIn() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'visitorRatingAverage', 'visitorRatingCount', 'ratingDistribution', 'rating', 'updatedAt'
-        ])
+        ]) &&
+        novelAggregatesMatchForOwnReview(novelId)
       );
 
       // Chapter metadata subcollection
@@ -90,36 +161,56 @@ service cloud.firestore {
     }
 
     // Novel Reviews and Genuine Ratings
+    // One review per reader per novel: the document id MUST be "{novelId}_{uid}".
+    // Every reader write must come with the matching novel aggregate change (same batch).
     match /reviews/{reviewId} {
-      allow read: if resource.data.status == 'published' || isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      // resource == null lets a reader "get" a review that does not exist yet
+      // (needed by the transaction that creates it); it exposes nothing.
+      allow read: if resource == null ||
+        resource.data.status == 'published' ||
+        isAdmin() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid);
+
       allow create: if isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        reviewId == request.resource.data.novelId + '_' + request.auth.uid &&
         request.resource.data.userId == request.auth.uid &&
         request.resource.data.status == 'published' &&
+        request.resource.data.rating is int &&
         request.resource.data.rating >= 1 && request.resource.data.rating <= 5 &&
-        request.resource.data.keys().hasOnly([
-          'id', 'novelId', 'novelTitle', 'userId', 'userName', 'userEmail',
-          'rating', 'reviewText', 'status', 'moderationReason', 'moderatedAt',
-          'moderatedBy', 'reportCount', 'createdAt', 'updatedAt'
-        ]) &&
+        reviewKeysAllowed() &&
         request.resource.data.get('reviewText', '').size() <= 1000 &&
         request.resource.data.userName.size() <= 60 &&
-        isUserActive(request.auth.uid);
+        isUserActive(request.auth.uid) &&
+        // only published novels can receive a NEW rating
+        get(/databases/$(database)/documents/novels/$(request.resource.data.novelId)).data.get('published', false) == true &&
+        novelAggregatesMatch(request.resource.data.novelId, 0, request.resource.data.rating);
 
       allow update: if isAdmin() || (
         isSignedIn() &&
+        request.auth.token.email_verified == true &&
         resource.data.userId == request.auth.uid &&
         request.resource.data.userId == request.auth.uid &&
+        request.resource.data.novelId == resource.data.novelId &&
         resource.data.status == 'published' &&
         request.resource.data.status == 'published' &&
+        request.resource.data.rating is int &&
         request.resource.data.rating >= 1 && request.resource.data.rating <= 5 &&
+        reviewKeysAllowed() &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'status', 'moderationReason', 'moderatedAt', 'moderatedBy', 'reportCount'
         ]) &&
         request.resource.data.get('reviewText', '').size() <= 1000 &&
-        isUserActive(request.auth.uid)
+        isUserActive(request.auth.uid) &&
+        novelAggregatesMatch(resource.data.novelId, countedStar(resource.data), request.resource.data.rating)
       );
 
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      // A reader's own delete must remove that review's star from the novel in the same batch.
+      allow delete: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.userId == request.auth.uid &&
+        novelAggregatesMatch(resource.data.novelId, countedStar(resource.data), 0)
+      );
     }
 
     // Moderation Reports submitted by users

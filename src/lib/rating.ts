@@ -242,3 +242,67 @@ export function getRatingDisplayDetails(novel: Novel | CatalogNovel, language: '
       : `Based on ${summary.visitorCount} reader ratings`,
   };
 }
+
+export interface RatingAggregateFields {
+  visitorRatingAverage: number;
+  visitorRatingCount: number;
+  ratingDistribution: RatingDistribution;
+  rating: string;
+}
+
+/**
+ * Applies ONE rating change (add / edit / remove) to a novel's stored aggregates
+ * incrementally, instead of re-reading every review of the novel.
+ *
+ *  - oldRating = null  -> the reader had no published rating before (new rating)
+ *  - newRating = null  -> the rating is removed (delete / hide)
+ *
+ * The result matches what firestore.rules expects (count and per-star counters move by exactly
+ * the delta of this one review). Throws when the stored aggregates are inconsistent
+ * (e.g. legacy data); an admin "resync" repairs those.
+ */
+export function applyRatingChange(
+  current: { visitorRatingCount?: unknown; ratingDistribution?: Partial<RatingDistribution> | null } | null | undefined,
+  oldRating: number | null,
+  newRating: number | null
+): RatingAggregateFields {
+  const stars = [1, 2, 3, 4, 5] as const;
+  const isStar = (r: number | null) => r !== null && Number.isInteger(r) && r >= 1 && r <= 5;
+  if ((oldRating !== null && !isStar(oldRating)) || (newRating !== null && !isStar(newRating))) {
+    throw new Error('قيمة التقييم غير صالحة.');
+  }
+
+  const dist: RatingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  let distSum = 0;
+  for (const s of stars) {
+    dist[s] = parseStarCount(current?.ratingDistribution?.[s]);
+    distSum += dist[s];
+  }
+  let count = Math.max(0, Math.floor(Number(current?.visitorRatingCount) || 0));
+
+  if (distSum !== count) {
+    throw new Error('بيانات تقييمات هذه الرواية تحتاج إلى مزامنة من لوحة الإدارة.');
+  }
+
+  if (oldRating !== null) {
+    if (dist[oldRating as 1 | 2 | 3 | 4 | 5] <= 0) {
+      throw new Error('بيانات تقييمات هذه الرواية تحتاج إلى مزامنة من لوحة الإدارة.');
+    }
+    dist[oldRating as 1 | 2 | 3 | 4 | 5] -= 1;
+    count -= 1;
+  }
+  if (newRating !== null) {
+    dist[newRating as 1 | 2 | 3 | 4 | 5] += 1;
+    count += 1;
+  }
+
+  const points = 1 * dist[1] + 2 * dist[2] + 3 * dist[3] + 4 * dist[4] + 5 * dist[5];
+  const average = count > 0 ? Number((points / count).toFixed(2)) : 0;
+
+  return {
+    visitorRatingAverage: average,
+    visitorRatingCount: count,
+    ratingDistribution: dist,
+    rating: count > 0 ? average.toFixed(1) : '',
+  };
+}

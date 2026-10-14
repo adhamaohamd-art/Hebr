@@ -7,7 +7,9 @@ import {
   parseStarCount,
   getDisplayedRating,
   getRatingDisplayDetails,
+  applyRatingChange,
 } from '../src/lib/rating';
+import { readFileSync } from 'node:fs';
 import { reviewService } from '../src/services/reviewService';
 import type { Novel, AdminRatingDistribution, RatingDistribution } from '../src/types';
 
@@ -456,6 +458,77 @@ test('19. Existing purchases, subscriptions, and chapter structures remain intac
   assert.equal(novel.freeChapters, 3);
   assert.equal(novel.chaptersCount, 25);
   assert.equal(novel.published, true);
+});
+
+// 20. Incremental aggregates equal a full recomputation for any add / edit / remove sequence.
+test('20. applyRatingChange matches full recomputation (add, edit, remove)', () => {
+  // Deterministic pseudo-random sequence of operations by 40 readers
+  let seed = 12345;
+  const rnd = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+
+  const reviews = new Map<number, number>(); // reader -> star
+  let agg: { visitorRatingCount: number; ratingDistribution: RatingDistribution } = {
+    visitorRatingCount: 0,
+    ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+  };
+
+  for (let i = 0; i < 500; i++) {
+    const reader = rnd(40);
+    const old = reviews.has(reader) ? (reviews.get(reader) as number) : null;
+    const op = rnd(3); // 0 add/edit, 1 add/edit, 2 remove
+    let next: number | null;
+    if (op === 2) {
+      if (old === null) continue;
+      next = null;
+    } else {
+      next = 1 + rnd(5);
+    }
+    const out = applyRatingChange(agg, old, next);
+    agg = { visitorRatingCount: out.visitorRatingCount, ratingDistribution: out.ratingDistribution };
+    if (next === null) reviews.delete(reader); else reviews.set(reader, next);
+
+    // Full recomputation from the current set of reviews
+    const dist: RatingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    let sum = 0;
+    reviews.forEach(star => { dist[star as 1 | 2 | 3 | 4 | 5]++; sum += star; });
+    assert.deepEqual(out.ratingDistribution, dist);
+    assert.equal(out.visitorRatingCount, reviews.size);
+    assert.equal(out.visitorRatingAverage, reviews.size ? Number((sum / reviews.size).toFixed(2)) : 0);
+    assert.equal(out.rating, reviews.size ? out.visitorRatingAverage.toFixed(1) : '');
+  }
+});
+
+// 21. Inconsistent stored aggregates are refused (never silently "fixed" with wrong numbers).
+test('21. applyRatingChange rejects inconsistent aggregates and invalid stars', () => {
+  assert.throws(() => applyRatingChange({ visitorRatingCount: 3, ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }, null, 5));
+  assert.throws(() => applyRatingChange({ visitorRatingCount: 0, ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }, 4, null));
+  assert.throws(() => applyRatingChange({}, null, 6));
+  assert.throws(() => applyRatingChange({}, null, 4.5));
+  const first = applyRatingChange(undefined, null, 5);
+  assert.equal(first.visitorRatingCount, 1);
+  assert.equal(first.visitorRatingAverage, 5);
+});
+
+// 22. firestore.rules keep the protections (static regression checks; the rules themselves must
+// still be exercised in the Firebase emulator / Rules Playground before deploying).
+test('22. firestore.rules: one-review-per-novel id, no email, verified email, atomic aggregates', () => {
+  const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
+  const reviewsBlock = rules.slice(rules.indexOf('match /reviews/{reviewId}'), rules.indexOf('match /reports/{reportId}'));
+
+  assert.ok(reviewsBlock.includes("reviewId == request.resource.data.novelId + '_' + request.auth.uid"), 'deterministic review id');
+  assert.ok(reviewsBlock.includes('request.auth.token.email_verified == true'), 'verified email required');
+  assert.ok(reviewsBlock.includes('request.resource.data.rating is int'), 'integer rating');
+  assert.ok(reviewsBlock.includes('novelAggregatesMatch('), 'review writes must carry the matching aggregate change');
+  assert.ok(reviewsBlock.includes('resource == null'), 'reading a not-yet-existing review must not error');
+  assert.equal(reviewsBlock.includes("'userEmail'"), false, 'userEmail must not be an allowed review key');
+
+  const novelsBlock = rules.slice(rules.indexOf('match /novels/{novelId}'), rules.indexOf('match /chapters/{chapterId}'));
+  assert.ok(novelsBlock.includes('novelAggregatesMatchForOwnReview(novelId)'), 'reader updates on novels must be validated');
+
+  const indexes = JSON.parse(readFileSync(new URL('../firestore.indexes.json', import.meta.url), 'utf8'));
+  const hasUserIdx = indexes.indexes.some((ix: { collectionGroup: string; fields: { fieldPath: string }[] }) =>
+    ix.collectionGroup === 'reviews' && ix.fields.map(f => f.fieldPath).join(',') === 'userId,createdAt');
+  assert.ok(hasUserIdx, 'reviews(userId, createdAt) index present');
 });
 
 console.log(`\n🎉 All ${passedTests} automated tests passed with 100% success!`);

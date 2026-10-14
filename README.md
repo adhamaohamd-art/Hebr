@@ -134,10 +134,28 @@ npm run build
 
 The public rating display uses the normal 1–5 star average and the number of published reader ratings. A reader can submit one rating per novel and edit that rating later; editing does not create an extra rating. Hidden or deleted reviews are excluded from the public average.
 
-The review queries require the composite indexes listed in `firestore.indexes.json`. Deploy the updated Firestore rules and indexes with:
+### How the numbers are kept correct (and safe)
+- **One review per reader per novel** is enforced by the rules: the review document id must be `{novelId}_{uid}`.
+- **Incremental aggregates.** Submitting, editing or deleting a rating runs ONE transaction that writes the review and adjusts `novels/{id}` (`visitorRatingCount`, `ratingDistribution`, `visitorRatingAverage`, `rating`) by exactly that rating. It no longer re-reads every review, so the cost per rating is a handful of reads no matter how many reviews exist, and simultaneous ratings cannot overwrite each other.
+- **Forgery protection.** `firestore.rules` re-check the arithmetic: a reader can only change the novel's counters by the effect of their own review written in the same transaction. Hand-edited counters from the browser console are rejected.
+- **Verified email required** to rate (same as comments and orders).
+- **No emails on reviews.** Reviews are publicly readable, so the reader's email is no longer stored on them.
+- **Home/Browse cards** read `catalog/home`, which only admins can write. It is refreshed when an admin moderates a review or presses *"Sync all ratings to the home page"* in Admin → Ratings. (Fully automatic refresh needs a Cloud Function, which requires the Blaze plan.)
 
+### Deploy
 ```bash
 firebase deploy --only firestore:rules,firestore:indexes
 ```
+This deploys Firestore rules and indexes only; it does not deploy website hosting. Wait until the new indexes finish building (Firebase Console → Firestore → Indexes) before testing.
 
-This command deploys Firestore rules and indexes only; it does not deploy website hosting.
+### One-time steps after deploying (as admin, Admin → Ratings)
+1. **Remove emails from old reviews** (cleans the field earlier versions stored).
+2. **Sync all ratings to the home page** (rebuilds each novel's numbers from its published reviews and refreshes `catalog/home`).
+
+### Before going live
+The rules were written and statically checked but not run against the Firebase emulator. Test them in the Rules Playground or with `firebase emulators:exec` (rate a novel, change the rating, delete it, try to edit `visitorRatingCount` by hand, try a second review document id). Optionally enable App Check by setting `VITE_RECAPTCHA_SITE_KEY`.
+
+### Tests
+```bash
+npx tsx tests/ratings.test.ts
+```

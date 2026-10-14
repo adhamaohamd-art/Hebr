@@ -53,13 +53,17 @@ export function getFriendlyErrorMessage(error: unknown, language: 'ar' | 'en' = 
   const raw = error instanceof Error ? error.message : String(error);
   const lower = raw.toLowerCase();
 
+  if (lower.includes('permission-denied') || lower.includes('missing or insufficient permissions')) {
+    return language === 'ar'
+      ? 'لا تملك صلاحية تنفيذ هذا الإجراء. تأكد من تسجيل الدخول وتأكيد بريدك الإلكتروني.'
+      : 'You do not have permission to do this. Make sure you are signed in and your email is verified.';
+  }
+
   const isBusyOrQuota =
     lower.includes('resource-exhausted') ||
     lower.includes('quota') ||
     lower.includes('unavailable') ||
     lower.includes('deadline-exceeded') ||
-    lower.includes('permission-denied') ||
-    lower.includes('permission') ||
     lower.includes('busy');
 
   if (isBusyOrQuota) {

@@ -135,7 +135,6 @@ export const NovelReviews: React.FC<NovelReviewsProps> = ({ novel, onRatingUpdat
         novelTitle: novel.title,
         userId: user.uid,
         userName: profile?.name || user.displayName || user.email?.split('@')[0] || 'قارئ حبر',
-        userEmail: user.email || '',
         rating: selectedRating,
         reviewText: reviewText.trim(),
       });
