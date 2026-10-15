@@ -227,6 +227,15 @@ export interface Translations {
     emptyTitle: string;
     emptyDesc: string;
     browseNovelsBtn: string;
+    perkDownload: string;
+    perkRead: string;
+    perkOwn: string;
+    detailsLink: string;
+    noRatingsYet: string;
+    ratingsLabel: string;
+    ownedBadge: string;
+    readNowBtn: string;
+    inLibraryLink: string;
   };
   plans: {
     pageTitle: string;
@@ -1100,6 +1109,15 @@ export const translations: Record<Language, Translations> = {
       emptyTitle: 'لا توجد كتب رقمية متاحة حالياً',
       emptyDesc: 'يمكن إضافة كتب جديدة من لوحة الإدارة.',
       browseNovelsBtn: 'تصفح الروايات',
+      perkDownload: 'تنزيل بصيغتي PDF و EPUB',
+      perkRead: 'اقرأه أونلاين من الموقع في أي وقت',
+      perkOwn: 'يبقى ملكك في مكتبتك للأبد',
+      detailsLink: 'تفاصيل الرواية',
+      noRatingsYet: 'لا تقييمات بعد',
+      ratingsLabel: 'تقييم',
+      ownedBadge: 'اشتريته بالفعل',
+      readNowBtn: 'اقرأ الآن',
+      inLibraryLink: 'التنزيل من مكتبتي',
     },
     plans: {
       pageTitle: 'خطط القراءة',
@@ -1971,6 +1989,15 @@ export const translations: Record<Language, Translations> = {
       emptyTitle: 'No digital editions available yet',
       emptyDesc: 'New digital books can be configured from the admin panel.',
       browseNovelsBtn: 'Browse Novels',
+      perkDownload: 'Download in PDF and EPUB',
+      perkRead: 'Read it online on the site, anytime',
+      perkOwn: 'Yours to keep in your library',
+      detailsLink: 'Novel details',
+      noRatingsYet: 'No ratings yet',
+      ratingsLabel: 'ratings',
+      ownedBadge: 'You own this',
+      readNowBtn: 'Read now',
+      inLibraryLink: 'Download from my library',
     },
     plans: {
       pageTitle: 'Reading Plans',

@@ -4,25 +4,28 @@ import { Novel } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 import { getLocalizedNovelField } from '../i18n/translations';
 import { getLocalizedGenres } from '../lib/genres';
+import { toCssImageUrl } from '../lib/sanitize';
 
 interface CoverProps {
   novel: Pick<Novel, 'title' | 'titleEn' | 'author' | 'authorEn' | 'genre' | 'genreEn' | 'color' | 'accent' | 'coverUrl'> & { genres?: string[] };
   large?: boolean;
+  small?: boolean;
 }
 
-export const Cover: React.FC<CoverProps> = ({ novel, large = false }) => {
+export const Cover: React.FC<CoverProps> = ({ novel, large = false, small = false }) => {
   const { language } = useLanguage();
 
   const title = getLocalizedNovelField(novel, 'title', language);
   const author = getLocalizedNovelField(novel, 'author', language);
   const genre = getLocalizedGenres(novel, language)[0] || '';
 
-  if (novel.coverUrl) {
+  const coverImage = toCssImageUrl(novel.coverUrl);
+  if (coverImage) {
     return (
       <div
-        className={`cover ${large ? 'cover-large' : ''}`}
+        className={`cover ${large ? 'cover-large' : ''} ${small ? 'cover-sm' : ''}`}
         style={{
-          backgroundImage: `url(${novel.coverUrl})`,
+          backgroundImage: coverImage,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
@@ -45,7 +48,7 @@ export const Cover: React.FC<CoverProps> = ({ novel, large = false }) => {
 
   return (
     <div
-      className={`cover ${large ? 'cover-large' : ''}`}
+      className={`cover ${large ? 'cover-large' : ''} ${small ? 'cover-sm' : ''}`}
       style={{ background: `linear-gradient(145deg, ${bgColor}, #1d2a29)` }}
     >
       <div className="cover-glow" style={{ background: accentColor }} />

@@ -52,3 +52,36 @@ export function isValidEgyptianPhone(phone: string): boolean {
 export function isValidTransactionRef(ref: string): boolean {
   return /^[A-Za-z0-9-]{6,30}$/.test(ref.trim());
 }
+
+const MAX_URL_LENGTH = 2000;
+
+/**
+ * Validates an image/file link typed by an admin.
+ * - '' (or only spaces) -> '' (no link, that is allowed)
+ * - a valid https:// URL without credentials -> the normalized URL
+ * - anything else (http://, javascript:, data:, garbage, too long) -> null
+ */
+export function normalizeHttpsUrl(input: string | null | undefined): string | null {
+  const raw = (input ?? '').trim();
+  if (!raw) return '';
+  if (raw.length > MAX_URL_LENGTH) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || url.username || url.password) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Builds a safe CSS `url("...")` value from a validated https URL.
+ * Characters that could end the url() token early (quotes, parentheses, backslash, spaces)
+ * are percent-encoded. Returns undefined when the link is missing or invalid.
+ */
+export function toCssImageUrl(input: string | null | undefined): string | undefined {
+  const safe = normalizeHttpsUrl(input);
+  if (!safe) return undefined;
+  const encoded = safe.replace(/["'\\()\s]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
+  return `url("${encoded}")`;
+}

@@ -1,5 +1,6 @@
 import { novelHasGenre, genreFieldsForSave } from '../lib/genres';
 import { isWithinFreeChapters } from '../lib/freeChapters';
+import { normalizeHttpsUrl } from '../lib/sanitize';
 import {
   collection,
   doc,
@@ -271,6 +272,14 @@ export const novelService = {
     // Never write back derived/stale fields coming from the edit form.
     const editable: Record<string, unknown> = { ...novelData };
     for (const key of NON_EDITABLE_NOVEL_FIELDS) delete editable[key];
+    // Cover link: empty is fine, otherwise it must be a valid https:// URL.
+    if ('coverUrl' in editable) {
+      const cover = normalizeHttpsUrl(editable.coverUrl as string | undefined);
+      if (cover === null) {
+        throw new Error('رابط الغلاف غير صالح. يجب أن يبدأ بـ https:// وأن يكون رابط صورة صحيحًا.');
+      }
+      editable.coverUrl = cover;
+    }
     // Several genres per novel: store them all, and keep genre/genreEn = the first one for older code.
     if ('genres' in editable) Object.assign(editable, genreFieldsForSave(editable.genres));
 
