@@ -103,18 +103,26 @@ export const LibraryPage: React.FC = () => {
 
   if (!user) return null;
 
-  // Find last read novel for "Continue Reading" banner
-  const recentItem = libraryItems.sort((a, b) => {
+  // "Continue Reading" banner: ONLY for novels the user has really started reading.
+  // (Bookmark-only entries have no lastChapter, and a brand-new account has no entries at all:
+  // in both cases the banner must not invent any progress.)
+  const readingItems = libraryItems.filter(i => (i.lastChapter ?? 0) >= 1);
+  const recentItem = [...readingItems].sort((a, b) => {
     const timeA = (a.updatedAt as { toMillis?: () => number })?.toMillis ? (a.updatedAt as { toMillis: () => number }).toMillis() : 0;
     const timeB = (b.updatedAt as { toMillis?: () => number })?.toMillis ? (b.updatedAt as { toMillis: () => number }).toMillis() : 0;
     return timeB - timeA;
   })[0];
 
-  const continueNovel = recentItem ? allNovels.find(n => n.id === recentItem.novelId) : allNovels[0];
-  const lastChapterNum = recentItem?.lastChapter || 1;
+  const continueNovel = recentItem ? allNovels.find(n => n.id === recentItem.novelId) : undefined;
+  const lastChapterNum = recentItem?.lastChapter ?? 1;
   const progressPercent = continueNovel
     ? Math.min(100, Math.round((lastChapterNum / Math.max(1, continueNovel.chaptersCount)) * 100))
     : 0;
+
+  // Suggestions: novels the user has not started or saved yet (falls back to the catalog order)
+  const touchedNovelIds = new Set(libraryItems.filter(i => (i.lastChapter ?? 0) >= 1 || i.bookmarked).map(i => i.novelId));
+  const untouchedNovels = allNovels.filter(n => !touchedNovelIds.has(n.id));
+  const suggestedNovels = (untouchedNovels.length > 0 ? untouchedNovels : allNovels).slice(0, 3);
 
   // Filter bookmarked novels
   const bookmarkedNovelIds = new Set(libraryItems.filter(i => i.bookmarked).map(i => i.novelId));
@@ -231,7 +239,7 @@ export const LibraryPage: React.FC = () => {
           <div className="mt-12">
             <h3 className="font-serif text-2xl mb-6">{t.library.recommendedTitle}</h3>
             <div className="library-grid">
-              {allNovels.slice(0, 3).map(n => (
+              {suggestedNovels.map(n => (
                 <NovelCard key={n.id} novel={n} />
               ))}
             </div>
