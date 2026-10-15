@@ -12,7 +12,7 @@ import {
   serverTimestamp,
   QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, refreshAuthToken } from '../lib/firebase';
 import { sanitizeMultiLine, sanitizeSingleLine } from '../lib/sanitize';
 import { LIMITS } from '../config';
 import { Comment } from '../types';
@@ -133,6 +133,7 @@ export const commentService = {
     const cleanUserName = sanitizeSingleLine(userName || 'قارئ حبر').slice(0, LIMITS.displayNameMax);
     const id = doc(collection(db, 'comments')).id;
 
+    await refreshAuthToken();
     await setDoc(doc(db, 'comments', id), {
       novelId,
       chapterId,

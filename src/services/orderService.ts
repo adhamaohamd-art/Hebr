@@ -11,7 +11,7 @@ import {
   writeBatch,
   increment,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, refreshAuthToken } from '../lib/firebase';
 import { libraryService } from './libraryService';
 import { sanitizeSingleLine, isValidEgyptianPhone, isValidTransactionRef } from '../lib/sanitize';
 import { LIMITS } from '../config';
@@ -110,6 +110,8 @@ export const orderService = {
       createdAt: serverTimestamp(),
     };
 
+    // Make sure the security rules see the current email_verified claim
+    await refreshAuthToken();
     await setDoc(doc(db, 'orders', orderId), orderData);
     return orderId;
   },

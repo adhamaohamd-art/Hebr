@@ -146,7 +146,13 @@ export const CheckoutPage: React.FC = () => {
       if (import.meta.env.DEV) {
         console.error('Order submission error:', err);
       }
-      const msg = err instanceof Error ? err.message : t.checkout.submissionError;
+      const code = (err as { code?: string } | null)?.code;
+      const msg =
+        code === 'permission-denied'
+          ? t.checkout.permissionError
+          : err instanceof Error
+            ? err.message
+            : t.checkout.submissionError;
       setErrorMsg(msg);
     } finally {
       setLoading(false);

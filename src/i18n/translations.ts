@@ -336,6 +336,7 @@ export interface Translations {
     changeFile: string;
     missingReceiptError: string;
     submissionError: string;
+    permissionError: string;
     confirmSubmitBtn: string;
     processingBtn: string;
     orderSuccessTitle: string;
@@ -1208,6 +1209,7 @@ export const translations: Record<Language, Translations> = {
       changeFile: 'تغيير الصورة',
       missingReceiptError: 'يرجى إرفاق صورة إيصال التحويل لإتمام تأكيد الطلب.',
       submissionError: 'تعذر إرسال الطلب حالياً، يرجى التحقق من الاتصال وإعادة المحاولة.',
+      permissionError: 'تعذّر إرسال الطلب لأن حسابك غير مصرّح له بذلك الآن. تأكد من تأكيد بريدك الإلكتروني، ثم سجّل الخروج وادخل من جديد وأعد المحاولة. وإن استمرت المشكلة تواصل معنا.',
       confirmSubmitBtn: 'تأكيد وإرسال طلب الاقتناء',
       processingBtn: 'جاري إرسال الطلب ورفع الإيصال...',
       orderSuccessTitle: 'تم إرسال طلب الاقتناء بنجاح!',
@@ -2078,6 +2080,7 @@ export const translations: Record<Language, Translations> = {
       changeFile: 'Change image',
       missingReceiptError: 'Please provide valid transfer details to complete the order.',
       submissionError: 'Unable to submit order right now. Please verify your connection and try again.',
+      permissionError: 'The order could not be sent because your account is not authorized right now. Make sure your email is verified, then sign out, sign in again and retry. If it keeps happening, contact us.',
       confirmSubmitBtn: 'Submit Order for Review',
       processingBtn: 'Submitting order details...',
       orderSuccessTitle: 'Order Placed Successfully!',

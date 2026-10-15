@@ -54,6 +54,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      // Heal a stale token: the SDK may already know the email is verified while the cached
+      // ID token still carries email_verified=false (rules would then deny comments/orders/ratings).
+      try {
+        if (currentUser.emailVerified) {
+          const tokenResult = await currentUser.getIdTokenResult();
+          if (!tokenResult.claims.email_verified) {
+            await currentUser.getIdToken(true);
+          }
+        }
+      } catch {
+        // ignore: handled by the explicit refresh right before protected writes
+      }
+
       try {
         // 1. Fetch or create users/{uid} once per session
         const userDocRef = doc(db, 'users', currentUser.uid);

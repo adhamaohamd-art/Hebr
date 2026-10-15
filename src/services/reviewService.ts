@@ -18,7 +18,7 @@ import {
   deleteField,
   DocumentSnapshot,
 } from 'firebase/firestore';
-import { db, auth, getFriendlyErrorMessage } from '../lib/firebase';
+import { db, auth, getFriendlyErrorMessage, refreshAuthToken } from '../lib/firebase';
 import { clientCache } from '../lib/cache';
 import { Review, ModerationReport, RatingDistribution, Novel } from '../types';
 import { settingsService } from './settingsService';
@@ -148,6 +148,8 @@ export const reviewService = {
     if (auth.currentUser && !auth.currentUser.emailVerified) {
       return { success: false, error: 'يرجى تأكيد بريدك الإلكتروني أولاً لتتمكن من تقييم الروايات.' };
     }
+
+    await refreshAuthToken();
 
     // Check site-wide settings
     const settings = await settingsService.getSettings();

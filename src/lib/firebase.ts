@@ -103,3 +103,16 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   const friendly = getFriendlyErrorMessage(error);
   throw new Error(friendly);
 }
+
+/**
+ * Forces a fresh ID token so claims such as email_verified are current before a protected write.
+ * (Security rules read the claim from the token, which can stay stale for up to an hour after the
+ * email was verified.)
+ */
+export async function refreshAuthToken(): Promise<void> {
+  try {
+    await auth.currentUser?.getIdToken(true);
+  } catch {
+    // Network hiccup: the write that follows will report the real problem.
+  }
+}
