@@ -164,7 +164,24 @@ export const novelService = {
       const data = snap.data() as CatalogDoc;
       const novels = Array.isArray(data.novels) ? data.novels : [];
       const ratings = ratingsSnap && ratingsSnap.exists() ? (ratingsSnap.data() as Record<string, unknown>) : null;
-      return ratings ? novels.map(n => applyRatingSummary(n, ratings)) : novels;
+      // Self-healing: a novel with no entry in catalog/ratings yet (rules not deployed, catalog
+      // not rebuilt, first rating not synced...) takes its numbers straight from its own public
+      // novel document, so the cards never show 0 for a novel that really has ratings.
+      return Promise.all(
+        novels.map(async n => {
+          if (ratings && ratings[`r_${n.id}`]) return applyRatingSummary(n, ratings);
+          try {
+            const live = await getDoc(doc(db, 'novels', n.id));
+            if (!live.exists()) return n;
+            const d = live.data() as Novel;
+            return applyRatingSummary(n, {
+              [`r_${n.id}`]: { a: Number(d.visitorRatingAverage) || 0, c: Number(d.visitorRatingCount) || 0 },
+            });
+          } catch {
+            return n;
+          }
+        })
+      );
     });
   },
 
