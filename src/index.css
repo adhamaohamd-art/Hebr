@@ -2803,3 +2803,84 @@ html[dir="en"] .reading-column p {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Store card: two purchase options (novel / digital book) ---- */
+.buy-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 18px;
+}
+.buy-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.buy-option-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.buy-option-info strong {
+  font-size: 13px;
+  color: var(--ink);
+}
+.buy-option-info small {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.buy-option-action {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.buy-option-action .book-price {
+  font-size: 18px;
+}
+.buy-option-action .primary-button {
+  min-width: 118px;
+}
+.buy-option-action .primary-button.added {
+  background: #2d5b50;
+}
+.buy-owned {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 118px;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--green);
+}
+.book-card-links {
+  display: flex;
+  gap: 18px;
+  margin-top: 14px;
+}
+.card-prices {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  line-height: 1.3;
+}
+.card-price-book {
+  font-size: 10px;
+  color: var(--muted);
+}
+@media (max-width: 640px) {
+  .buy-option-action {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

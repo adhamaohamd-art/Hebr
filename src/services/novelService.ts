@@ -116,6 +116,27 @@ function sortNewestFirst<T extends { createdAtMs?: number }>(list: T[]): T[] {
 }
 
 const CATALOG_DOC = ['catalog', 'home'] as const;
+/**
+ * catalog/ratings: one tiny public doc holding the LIVE rating summary of every novel as
+ * top-level fields `r_<novelId>: { a: average, c: count }`. catalog/home is admin-write only,
+ * so readers' ratings never reached the cards on Home / Browse / Store; this doc fixes that.
+ */
+const RATINGS_DOC = ['catalog', 'ratings'] as const;
+
+function applyRatingSummary(novel: CatalogNovel, ratings: Record<string, unknown>): CatalogNovel {
+  const entry = ratings[`r_${novel.id}`] as { a?: unknown; c?: unknown } | undefined;
+  if (!entry) return novel;
+  const count = Math.max(0, Math.floor(Number(entry.c) || 0));
+  const avg = Number(entry.a) || 0;
+  return {
+    ...novel,
+    visitorRatingCount: count,
+    visitorRatingAverage: count > 0 ? avg : undefined,
+    rating: count > 0 ? avg.toFixed(1) : undefined,
+    // The stale per-star distribution of the snapshot must not be used with the new count.
+    ratingDistribution: undefined,
+  };
+}
 const NON_EDITABLE_NOVEL_FIELDS = ['id', 'createdAt', 'updatedAt', 'createdAtMs', 'chaptersSummary', 'chaptersCount'];
 
 function sortChaptersByNumber<T extends { number: number }>(list: T[]): T[] {
@@ -133,10 +154,17 @@ export const novelService = {
    */
   async getCatalog(): Promise<CatalogNovel[]> {
     return clientCache.getOrFetch('catalog_home', async () => {
-      const snap = await getDoc(doc(db, ...CATALOG_DOC));
+      const [snap, ratingsSnap] = await Promise.all([
+        getDoc(doc(db, ...CATALOG_DOC)),
+        // Live rating summary (catalog/ratings). Optional: a missing/unreadable doc just means
+        // "use whatever the catalog snapshot has".
+        getDoc(doc(db, ...RATINGS_DOC)).catch(() => null),
+      ]);
       if (!snap.exists()) return [];
       const data = snap.data() as CatalogDoc;
-      return Array.isArray(data.novels) ? data.novels : [];
+      const novels = Array.isArray(data.novels) ? data.novels : [];
+      const ratings = ratingsSnap && ratingsSnap.exists() ? (ratingsSnap.data() as Record<string, unknown>) : null;
+      return ratings ? novels.map(n => applyRatingSummary(n, ratings)) : novels;
     });
   },
 
@@ -612,6 +640,17 @@ export const novelService = {
         updatedAt: serverTimestamp(),
       });
       opsInBatch++;
+
+      // Live rating summary for the cards (see RATINGS_DOC)
+      const ratingFields: Record<string, unknown> = { updatedAt: serverTimestamp() };
+      for (const c of catalogItems) {
+        ratingFields[`r_${c.id}`] = {
+          a: Number(c.visitorRatingAverage) || 0,
+          c: Math.max(0, Math.floor(Number(c.visitorRatingCount) || 0)),
+        };
+      }
+      currentBatch.set(doc(db, ...RATINGS_DOC), ratingFields);
+      opsInBatch++;
       await commitBatchIfNeeded(true);
 
       clientCache.clear();
@@ -751,6 +790,33 @@ export const novelService = {
       },
       adminInfo
     );
+  },
+
+  /**
+   * Publishes ONE novel's current rating (read fresh from novels/{id}) to catalog/ratings so the
+   * cards on Home / Browse / Store show it. Allowed for readers by firestore.rules, which only
+   * accept values identical to the novel document. Best effort: never throws.
+   */
+  async syncRatingSummary(novelId: string): Promise<void> {
+    try {
+      const snap = await getDoc(doc(db, 'novels', novelId));
+      if (!snap.exists()) return;
+      const n = snap.data() as Novel;
+      const count = Math.max(0, Math.floor(Number(n.visitorRatingCount) || 0));
+      await setDoc(
+        doc(db, ...RATINGS_DOC),
+        {
+          lastNovelId: novelId,
+          [`r_${novelId}`]: { a: count > 0 ? Number(n.visitorRatingAverage) || 0 : 0, c: count },
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      if (import.meta.env.DEV) console.warn('syncRatingSummary notice (deploy firestore.rules?):', err);
+    } finally {
+      clientCache.invalidate('catalog_home');
+    }
   },
 
   /**

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, Plus, Check, Download, BookOpen, Library } from 'lucide-react';
+import { ShoppingBag, Plus, Check, Download, BookOpen } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Cover } from '../components/Cover';
 import { PageMeta } from '../components/PageMeta';
@@ -60,6 +60,24 @@ export const StorePage: React.FC = () => {
     loadBooks();
   }, [reloadKey, language]);
 
+  const handleAddNovel = (novel: Novel) => {
+    addToCart({
+      id: `novel_${novel.id}`,
+      type: 'novel',
+      refId: novel.id,
+      title: getLocalizedNovelField(novel, 'title', language),
+      author: getLocalizedNovelField(novel, 'author', language),
+      price: novel.novelPrice,
+      coverColor: novel.color,
+      coverAccent: novel.accent,
+      coverUrl: novel.coverUrl,
+    });
+    setAddedIds(prev => ({ ...prev, [`novel_${novel.id}`]: true }));
+    setTimeout(() => {
+      setAddedIds(prev => ({ ...prev, [`novel_${novel.id}`]: false }));
+    }, 2500);
+  };
+
   const handleAddBook = (novel: Novel) => {
     const title = getLocalizedNovelField(novel, 'title', language);
     const author = getLocalizedNovelField(novel, 'author', language);
@@ -75,9 +93,9 @@ export const StorePage: React.FC = () => {
       coverAccent: novel.accent,
       coverUrl: novel.coverUrl,
     });
-    setAddedIds(prev => ({ ...prev, [novel.id]: true }));
+    setAddedIds(prev => ({ ...prev, [`book_${novel.id}`]: true }));
     setTimeout(() => {
-      setAddedIds(prev => ({ ...prev, [novel.id]: false }));
+      setAddedIds(prev => ({ ...prev, [`book_${novel.id}`]: false }));
     }, 2500);
   };
 
@@ -107,12 +125,14 @@ export const StorePage: React.FC = () => {
       ) : novels.length > 0 ? (
         <div className="store-grid">
           {novels.map(novel => {
-            const price = novel.bookPrice || novel.novelPrice || 45;
+            const novelOwned = Boolean(entitlements[novel.id]);
+            const hasBook = Boolean(novel.bookPrice);
             const title = getLocalizedNovelField(novel, 'title', language);
             const author = getLocalizedNovelField(novel, 'author', language);
             const genres = getLocalizedGenres(novel, language).slice(0, 2);
             const rating = getNovelRatingSummary(novel);
-            const added = Boolean(addedIds[novel.id]);
+            const novelAdded = Boolean(addedIds[`novel_${novel.id}`]);
+            const bookAdded = Boolean(addedIds[`book_${novel.id}`]);
             const owned = entitlements[novel.id]?.type === 'book';
             const ratingLabel = rating.hasRatings
               ? `${rating.displayAverage} / 5, ${rating.visitorCount} ${t.store.ratingsLabel}`
@@ -139,8 +159,8 @@ export const StorePage: React.FC = () => {
                     {genres.map(g => (
                       <span className="book-tag" key={g}>{g}</span>
                     ))}
-                    <span className="book-tag format">PDF</span>
-                    <span className="book-tag format">EPUB</span>
+                    {hasBook && <span className="book-tag format">PDF</span>}
+                    {hasBook && <span className="book-tag format">EPUB</span>}
                   </div>
 
                   <h3>
@@ -178,43 +198,64 @@ export const StorePage: React.FC = () => {
                     ) : null}
                   </div>
 
-                  <ul className="book-perks">
-                    <li><Download size={16} />{t.store.perkDownload}</li>
-                    <li><BookOpen size={16} />{t.store.perkRead}</li>
-                    <li><Library size={16} />{t.store.perkOwn}</li>
-                  </ul>
-
-                  <div className="book-card-buy">
-                    {owned ? (
-                      <div className="book-card-actions">
-                        <Link to="/library" className="book-card-details">
-                          {t.store.inLibraryLink}
-                        </Link>
-                        <Link to={`/novel/${novel.id}/chapter/1`} className="primary-button small">
-                          {t.store.readNowBtn}
-                        </Link>
+                  <div className="buy-options">
+                    {/* Option 1: the novel itself (read online) */}
+                    <div className="buy-option">
+                      <div className="buy-option-info">
+                        <strong>{t.store.novelOptionTitle}</strong>
+                        <small><BookOpen size={13} />{t.store.perkRead}</small>
                       </div>
-                    ) : (
-                      <>
+                      <div className="buy-option-action">
                         <span className="book-price">
-                          {price}<small>{t.common.currency}</small>
+                          {novel.novelPrice}<small>{t.common.currency}</small>
                         </span>
-                        <div className="book-card-actions">
-                          <Link to={`/novel/${novel.id}`} className="book-card-details">
-                            {t.store.detailsLink}
-                          </Link>
+                        {novelOwned ? (
+                          <span className="buy-owned"><Check size={14} />{t.store.ownedShort}</span>
+                        ) : (
                           <button
-                            className={`primary-button small ${added ? 'added' : ''}`}
-                            onClick={() => handleAddBook(novel)}
+                            className={`primary-button small ${novelAdded ? 'added' : ''}`}
+                            onClick={() => handleAddNovel(novel)}
                           >
-                            {added ? (
-                              <>{t.store.addedToast}</>
-                            ) : (
-                              <>{t.store.addToCartBtn} <Plus size={15} /></>
-                            )}
+                            {novelAdded ? t.store.addedToast : <>{t.store.addToCartBtn} <Plus size={15} /></>}
                           </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Option 2: the digital edition (PDF/EPUB), only when it has a price */}
+                    {hasBook && (
+                      <div className="buy-option">
+                        <div className="buy-option-info">
+                          <strong>{t.store.bookOptionTitle}</strong>
+                          <small><Download size={13} />{t.store.perkDownload}</small>
                         </div>
-                      </>
+                        <div className="buy-option-action">
+                          <span className="book-price">
+                            {novel.bookPrice}<small>{t.common.currency}</small>
+                          </span>
+                          {owned ? (
+                            <span className="buy-owned"><Check size={14} />{t.store.ownedShort}</span>
+                          ) : (
+                            <button
+                              className={`primary-button small ${bookAdded ? 'added' : ''}`}
+                              onClick={() => handleAddBook(novel)}
+                            >
+                              {bookAdded ? t.store.addedToast : <>{t.store.addToCartBtn} <Plus size={15} /></>}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="book-card-links">
+                    <Link to={`/novel/${novel.id}`} className="book-card-details">
+                      {t.store.detailsLink}
+                    </Link>
+                    {(owned || novelOwned) && (
+                      <Link to={owned ? '/library' : `/novel/${novel.id}/chapter/1`} className="book-card-details">
+                        {owned ? t.store.inLibraryLink : t.store.readNowBtn}
+                      </Link>
                     )}
                   </div>
                 </div>

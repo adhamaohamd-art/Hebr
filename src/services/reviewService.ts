@@ -111,6 +111,7 @@ export const reviewService = {
       clientCache.invalidate('catalog_home');
       clientCache.invalidate(`novel_${novelId}`);
       await novelService.syncNovelToCatalog(novelId);
+      await novelService.syncRatingSummary(novelId);
     } catch (err) {
       if (import.meta.env.DEV) console.warn('Could not update novel aggregates document:', err);
     }
@@ -284,6 +285,7 @@ export const reviewService = {
     }
 
     clientCache.invalidate(`novel_${novelId}`);
+    await novelService.syncRatingSummary(novelId);
     return { success: true };
   },
 
@@ -312,6 +314,7 @@ export const reviewService = {
       });
 
       clientCache.invalidate(`novel_${novelId}`);
+      await novelService.syncRatingSummary(novelId);
       return true;
     } catch (err) {
       if (import.meta.env.DEV) console.error('Error deleting user review:', err);
@@ -517,6 +520,7 @@ export const reviewService = {
         });
         clientCache.invalidate(`novel_${novelId}`);
         await novelService.syncNovelToCatalog(novelId);
+        await novelService.syncRatingSummary(novelId);
       } catch (txErr) {
         if (txErr instanceof ReviewFlowError) throw txErr;
         if (import.meta.env.DEV) console.warn('Incremental moderation failed, falling back to full recalculation:', txErr);

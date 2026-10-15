@@ -114,6 +114,21 @@ service cloud.firestore {
       return novelAggregatesMatch(novelId, oldR, newR);
     }
 
+    // catalog/ratings write check (see match /catalog/ratings)
+    function ratingSummaryWriteOk() {
+      let d = request.resource.data;
+      let before = resource == null ? {} : resource.data;
+      let nid = d.get('lastNovelId', '');
+      let key = 'r_' + nid;
+      let novelPath = /databases/$(database)/documents/novels/$(nid);
+      return nid is string && nid.size() > 0 &&
+        d.diff(before).affectedKeys().hasOnly(['lastNovelId', 'updatedAt', key]) &&
+        d[key].keys().hasOnly(['a', 'c']) &&
+        d[key].c == get(novelPath).data.get('visitorRatingCount', 0) &&
+        d[key].a == (get(novelPath).data.get('visitorRatingCount', 0) > 0
+          ? get(novelPath).data.get('visitorRatingAverage', 0) : 0);
+    }
+
     // Catch-all default deny
     match /{document=**} {
       allow read, write: if false;
@@ -129,6 +144,14 @@ service cloud.firestore {
     match /catalog/{catalogId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // Live rating summary shown on the cards: fields `r_<novelId>: { a: average, c: count }`.
+    // A signed-in reader may change ONLY the entry of the novel named in `lastNovelId`, and it
+    // must equal the aggregates stored on the (rule-protected) novel document, so nothing can be
+    // forged. Combines (OR) with the admin rule of the generic catalog match above.
+    match /catalog/ratings {
+      allow create, update: if isSignedIn() && ratingSummaryWriteOk();
     }
 
     // Digital Book Downloads (PDF) - strictly protected for buyers of 'book' product

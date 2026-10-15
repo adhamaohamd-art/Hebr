@@ -97,8 +97,15 @@ export const NovelCard: React.FC<NovelCardProps> = ({ novel, compact = false }) 
               </span>
             </span>
             {novel.novelPrice ? (
-              <span className="font-semibold text-[var(--green)]">
-                {novel.novelPrice} {t.common.currency}
+              <span className="card-prices">
+                <span className="font-semibold text-[var(--green)]">
+                  {novel.novelPrice} {t.common.currency}
+                </span>
+                {novel.bookPrice ? (
+                  <span className="card-price-book" title={t.store.bookOptionTitle}>
+                    PDF · {novel.bookPrice} {t.common.currency}
+                  </span>
+                ) : null}
               </span>
             ) : null}
           </div>

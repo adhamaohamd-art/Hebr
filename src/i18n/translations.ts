@@ -236,6 +236,9 @@ export interface Translations {
     ownedBadge: string;
     readNowBtn: string;
     inLibraryLink: string;
+    novelOptionTitle: string;
+    bookOptionTitle: string;
+    ownedShort: string;
   };
   plans: {
     pageTitle: string;
@@ -1118,6 +1121,9 @@ export const translations: Record<Language, Translations> = {
       ownedBadge: 'اشتريته بالفعل',
       readNowBtn: 'اقرأ الآن',
       inLibraryLink: 'التنزيل من مكتبتي',
+      novelOptionTitle: 'اقتناء الرواية',
+      bookOptionTitle: 'الكتاب الرقمي (PDF/EPUB)',
+      ownedShort: 'في مكتبتك',
     },
     plans: {
       pageTitle: 'خطط القراءة',
@@ -1998,6 +2004,9 @@ export const translations: Record<Language, Translations> = {
       ownedBadge: 'You own this',
       readNowBtn: 'Read now',
       inLibraryLink: 'Download from my library',
+      novelOptionTitle: 'Own the novel',
+      bookOptionTitle: 'Digital book (PDF/EPUB)',
+      ownedShort: 'In your library',
     },
     plans: {
       pageTitle: 'Reading Plans',
