@@ -4,7 +4,8 @@ import { LoadingState } from '../../components/States';
 import { settingsService } from '../../services/settingsService';
 import { useLanguage } from '../../context/LanguageContext';
 import { getLocalizedPlan } from '../../i18n/translations';
-import { Plan, Coupon } from '../../types';
+import { Plan, Coupon, Novel } from '../../types';
+import { novelService } from '../../services/novelService';
 import { LIMITS } from '../../config';
 
 export const AdminPlansCouponsPage: React.FC = () => {
@@ -22,6 +23,7 @@ export const AdminPlansCouponsPage: React.FC = () => {
 
   // Edit plan state
   const [editingPlan, setEditingPlan] = useState<Partial<Plan> | null>(null);
+  const [allNovels, setAllNovels] = useState<Novel[]>([]);
 
   const fetchData = async () => {
     try {
@@ -32,6 +34,11 @@ export const AdminPlansCouponsPage: React.FC = () => {
       ]);
       setPlans(pList);
       setCoupons(cList);
+      try {
+        setAllNovels(await novelService.getNovels());
+      } catch (e) {
+        console.warn('Error loading novels for plan editor:', e);
+      }
     } catch (e) {
       console.warn('Error loading plans/coupons:', e);
     } finally {
@@ -404,6 +411,51 @@ export const AdminPlansCouponsPage: React.FC = () => {
                   }
                   className="w-full p-2 border border-[var(--line)] text-xs"
                 />
+              </div>
+
+              <div className="border border-[var(--line)] p-2 space-y-2">
+                <label className="block text-xs font-medium">
+                  {language === 'ar' ? 'الروايات التي تفتحها هذه الباقة' : 'Novels unlocked by this plan'}
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="planAccessAll"
+                    checked={editingPlan.accessAll ?? false}
+                    onChange={e => setEditingPlan({ ...editingPlan, accessAll: e.target.checked })}
+                  />
+                  <label htmlFor="planAccessAll" className="text-xs cursor-pointer">
+                    {language === 'ar' ? 'كل الروايات' : 'All novels'}
+                  </label>
+                </div>
+                {!editingPlan.accessAll && (
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {allNovels.map(n => {
+                      const checked = (editingPlan.novelIds || []).includes(n.id);
+                      return (
+                        <label key={n.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={e => {
+                              const cur = editingPlan.novelIds || [];
+                              setEditingPlan({
+                                ...editingPlan,
+                                novelIds: e.target.checked ? [...cur, n.id] : cur.filter(x => x !== n.id),
+                              });
+                            }}
+                          />
+                          {n.title}
+                        </label>
+                      );
+                    })}
+                    {allNovels.length === 0 && (
+                      <span className="text-xs text-[var(--muted)]">
+                        {language === 'ar' ? 'لا توجد روايات' : 'No novels'}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2">

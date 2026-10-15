@@ -360,7 +360,7 @@ export const AdminUsersPage: React.FC = () => {
         doc(db, 'users', managingAccessUser.uid),
         {
           subscription: {
-            planId: 'admin_grant',
+            planId: 'admin_grant', // unlocks all novels (see firestore.rules)
             planName: `${t.adminUsers.modalTitle} (${subMonths}m)`,
             expiresAt,
           },

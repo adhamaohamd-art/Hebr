@@ -123,12 +123,14 @@ export const ReaderPage: React.FC = () => {
             entitlement = await libraryService.getUserEntitlement(user.uid, novelId);
           }
 
+          const subPlan = await libraryService.getSubscriptionPlan(profile);
           const unlock = libraryService.checkChapterUnlocked(
             novelData,
             ch,
             profile,
             entitlement,
-            isAdmin
+            isAdmin,
+            subPlan
           );
 
           if (unlock.isUnlocked) {

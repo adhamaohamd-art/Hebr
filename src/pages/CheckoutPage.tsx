@@ -123,6 +123,7 @@ export const CheckoutPage: React.FC = () => {
         refId: i.refId,
         title: i.title,
         price: i.price,
+        ...(i.period ? { period: i.period } : {}),
       }));
 
       const newOrderId = await orderService.createOrder({

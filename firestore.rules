@@ -30,6 +30,22 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscription.expiresAt > request.time.toMillis();
     }
 
+    // A subscription unlocks a novel only if its plan includes it:
+    //  - 'admin_grant' (manual grant by an admin; users cannot write 'subscription') unlocks all
+    //  - otherwise plans/{planId} must have accessAll == true or list the novel in novelIds
+    function subscriptionCoversNovel(novelId) {
+      let sub = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscription;
+      let planPath = /databases/$(database)/documents/plans/$(sub.planId);
+      return sub.planId == 'admin_grant' ||
+        (exists(planPath) &&
+          (get(planPath).data.get('accessAll', false) == true ||
+           novelId in get(planPath).data.get('novelIds', [])));
+    }
+
+    function hasActiveSubscriptionFor(novelId) {
+      return hasActiveSubscription() && subscriptionCoversNovel(novelId);
+    }
+
     // ---------------------------------------------------------------------------------------
     // Rating aggregates (novels/{id}) are maintained by the browser, so the rules re-check the
     // arithmetic: the novel's counters may only move by exactly the effect of the reader's own
@@ -151,11 +167,17 @@ service cloud.firestore {
       allow read: if resource.data.get('isFree', false) == true ||
         isAdmin() ||
         (resource.data.novelId != null && hasNovelEntitlement(resource.data.novelId)) ||
-        hasActiveSubscription() ||
+        (resource.data.novelId != null && hasActiveSubscriptionFor(resource.data.novelId)) ||
+        // Same rule as the UI (src/lib/freeChapters.ts): chapter flagged isFree OR its number is
+        // within the novel's freeChapters setting.
         (
           resource.data.novelId != null &&
           exists(/databases/$(database)/documents/novels/$(resource.data.novelId)/chapters/$(chapterId)) &&
-          get(/databases/$(database)/documents/novels/$(resource.data.novelId)/chapters/$(chapterId)).data.isFree == true
+          (
+            get(/databases/$(database)/documents/novels/$(resource.data.novelId)/chapters/$(chapterId)).data.get('isFree', false) == true ||
+            get(/databases/$(database)/documents/novels/$(resource.data.novelId)/chapters/$(chapterId)).data.get('number', 0) <=
+              get(/databases/$(database)/documents/novels/$(resource.data.novelId)).data.get('freeChapters', 0)
+          )
         );
       allow write: if isAdmin();
     }

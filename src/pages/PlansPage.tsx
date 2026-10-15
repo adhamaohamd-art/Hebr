@@ -47,6 +47,7 @@ export const PlansPage: React.FC = () => {
       refId: plan.id,
       title: `${t.home.plansEyebrow} - ${localized.name} (${yearly ? t.plans.yearly : t.plans.monthly})`,
       price,
+      period: yearly ? 'yearly' : 'monthly',
     });
     navigate('/cart');
   };

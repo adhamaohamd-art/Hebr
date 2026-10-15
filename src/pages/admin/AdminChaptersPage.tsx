@@ -1,3 +1,4 @@
+import { isWithinFreeChapters } from '../../lib/freeChapters';
 import React, { useState, useEffect } from 'react';
 import {
   Plus,
@@ -83,7 +84,7 @@ export const AdminChaptersPage: React.FC = () => {
       number: nextNumber,
       title: `${t.common.chapter} ${nextNumber}`,
       titleEn: `Chapter ${nextNumber}`,
-      isFree: nextNumber <= (novels.find(n => n.id === selectedNovelId)?.freeChapters ?? 2),
+      isFree: isWithinFreeChapters(nextNumber, novels.find(n => n.id === selectedNovelId)?.freeChapters ?? 2),
       published: true,
       body: '',
     });
@@ -178,7 +179,7 @@ export const AdminChaptersPage: React.FC = () => {
           {
             number: currentNumber,
             title: titleLine || `${t.common.chapter} ${currentNumber}`,
-            isFree: currentNumber <= freeCount,
+            isFree: isWithinFreeChapters(currentNumber, freeCount),
             published: true,
           },
           undefined,

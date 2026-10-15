@@ -184,8 +184,9 @@ export const orderService = {
           { merge: true }
         );
       } else if (item.type === 'plan') {
-        const isYearly = item.price > 150;
-        const durationDays = isYearly ? 365 : 30;
+        // Explicit period when present; legacy orders (no period) fall back to the old price heuristic.
+        const period = item.period ?? (item.price > 150 ? 'yearly' : 'monthly');
+        const durationDays = period === 'yearly' ? 365 : 30;
         const expiresAt = Date.now() + durationDays * 24 * 60 * 60 * 1000;
 
         const userRef = doc(db, 'users', order.userId);
@@ -195,6 +196,7 @@ export const orderService = {
             subscription: {
               planId: item.refId,
               planName: item.title,
+              period,
               expiresAt,
             },
           },

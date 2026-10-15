@@ -174,9 +174,12 @@ export interface BookFile {
   updatedAt: unknown;
 }
 
+export type BillingPeriod = 'monthly' | 'yearly';
+
 export interface UserSubscription {
-  planId: string;
+  planId: string; // 'admin_grant' = manual admin grant that unlocks every novel
   planName?: string;
+  period?: BillingPeriod;
   expiresAt: number; // timestamp ms
 }
 
@@ -219,7 +222,9 @@ export interface Plan {
   priceYearly: number;  // in EGP
   description: string;
   active: boolean;
-  books: string[];
+  books: string[]; // display text only (marketing bullets); NOT used for access
+  novelIds?: string[]; // novels this plan unlocks (enforced by firestore.rules)
+  accessAll?: boolean; // true = plan unlocks every novel
   featured?: boolean;
 }
 
@@ -230,6 +235,7 @@ export interface CartItem {
   title: string;
   author?: string;
   price: number;
+  period?: BillingPeriod; // plan items only
   coverColor?: string;
   coverAccent?: string;
   coverUrl?: string;
@@ -243,6 +249,7 @@ export interface OrderItem {
   refId: string;
   title: string;
   price: number;
+  period?: BillingPeriod; // plan items only
 }
 
 export interface Order {

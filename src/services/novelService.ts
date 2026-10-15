@@ -1,4 +1,5 @@
 import { novelHasGenre, genreFieldsForSave } from '../lib/genres';
+import { isWithinFreeChapters } from '../lib/freeChapters';
 import {
   collection,
   doc,
@@ -273,6 +274,9 @@ export const novelService = {
     // Several genres per novel: store them all, and keep genre/genreEn = the first one for older code.
     if ('genres' in editable) Object.assign(editable, genreFieldsForSave(editable.genres));
 
+    // Set inside the transaction (reassigned on every retry): did freeChapters actually change?
+    let freeChaptersChanged = false;
+
     await runTransaction(db, async tx => {
       const novelSnap = await tx.get(novelRef);
       const catSnap = await tx.get(catRef);
@@ -281,6 +285,11 @@ export const novelService = {
         ? ({ id, ...(novelSnap.data() as Omit<Novel, 'id'>) } as Novel)
         : null;
       const nowMs = Date.now();
+
+      freeChaptersChanged =
+        existing !== null &&
+        'freeChapters' in editable &&
+        Number(editable.freeChapters) !== Number(existing.freeChapters ?? 0);
 
       const payload: Record<string, unknown> = { ...editable, updatedAt: serverTimestamp() };
       if (!existing) {
@@ -307,7 +316,49 @@ export const novelService = {
 
     clientCache.invalidate(`novel_${id}`);
     clientCache.invalidate('catalog_home');
+
+    // Changing "free chapters" must re-apply to the chapters already stored, otherwise the
+    // per-chapter isFree flags (which firestore.rules also read) keep the old value.
+    if (freeChaptersChanged) {
+      try {
+        await this.applyFreeChaptersPolicy(id, Number(editable.freeChapters));
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        throw new Error(`تم حفظ الرواية لكن فشل تحديث حالة الفصول المجانية (اضغط "إعادة بناء الفهرس" أو أعد الحفظ): ${reason}`);
+      }
+    }
     return id;
+  },
+
+  /**
+   * Admin: makes chapters 1..freeCount free and every later chapter paid, on the chapter
+   * metadata AND the denormalized chapterContents flag, then refreshes the novel's chapter
+   * summary. Only documents whose value actually changes are written.
+   */
+  async applyFreeChaptersPolicy(novelId: string, freeCount: number): Promise<number> {
+    const chaptersSnap = await getDocs(collection(db, 'novels', novelId, 'chapters'));
+    const updates: { id: string; isFree: boolean }[] = [];
+    chaptersSnap.forEach(d => {
+      const want = isWithinFreeChapters(Number(d.data().number) || 0, freeCount);
+      if (Boolean(d.data().isFree) !== want) updates.push({ id: d.id, isFree: want });
+    });
+
+    // 2 writes per chapter; stay well under the 500-op batch limit.
+    for (let i = 0; i < updates.length; i += 200) {
+      const batch = writeBatch(db);
+      for (const u of updates.slice(i, i + 200)) {
+        batch.update(doc(db, 'novels', novelId, 'chapters', u.id), { isFree: u.isFree, updatedAt: serverTimestamp() });
+        batch.set(doc(db, 'chapterContents', u.id), { novelId, isFree: u.isFree }, { merge: true });
+      }
+      await batch.commit();
+    }
+
+    if (updates.length > 0) {
+      await this.syncNovelChaptersSummary(novelId);
+      updates.forEach(u => clientCache.invalidate(`chapter_content_${u.id}`));
+    }
+    clientCache.invalidate(`novel_${novelId}`);
+    return updates.length;
   },
 
   /**

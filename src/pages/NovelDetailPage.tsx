@@ -22,7 +22,7 @@ import { BookDownloadButtons } from '../components/BookDownloadButtons';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
-import { Novel, ChapterMeta, Entitlement } from '../types';
+import { Novel, ChapterMeta, Entitlement, Plan } from '../types';
 import { getLocalizedNovelField, getLocalizedChapterTitle } from '../i18n/translations';
 import { getFriendlyErrorMessage } from '../lib/firebase';
 import { getNovelRatingSummary } from '../lib/rating';
@@ -38,6 +38,7 @@ export const NovelDetailPage: React.FC = () => {
   const [novel, setNovel] = useState<Novel | null>(null);
   const [chapters, setChapters] = useState<ChapterMeta[]>([]);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
+  const [subPlan, setSubPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
@@ -60,6 +61,7 @@ export const NovelDetailPage: React.FC = () => {
           if (user) {
             const ent = await libraryService.getUserEntitlement(user.uid, id);
             setEntitlement(ent);
+            setSubPlan(await libraryService.getSubscriptionPlan(profile));
           }
         }
       } catch (err) {
@@ -267,7 +269,8 @@ export const NovelDetailPage: React.FC = () => {
                   ch,
                   profile,
                   entitlement,
-                  isAdmin
+                  isAdmin,
+                  subPlan
                 );
 
                 const chapterTitle = getLocalizedChapterTitle(ch, language);

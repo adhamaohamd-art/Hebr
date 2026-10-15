@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
-    "test": "npx -y tsx --test tests/genres.test.ts tests/ratings.test.ts",
+    "test": "npx -y tsx --test tests/genres.test.ts tests/ratings.test.ts tests/freeChapters.test.ts",
     "check": "npm run typecheck && npm run lint && npm run test"
   },
   "dependencies": {

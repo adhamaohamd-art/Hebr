@@ -7,7 +7,9 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Entitlement, UserLibraryItem, Novel, ChapterMeta, UserProfile } from '../types';
+import { Entitlement, UserLibraryItem, Novel, ChapterMeta, UserProfile, Plan } from '../types';
+import { settingsService } from './settingsService';
+import { isWithinFreeChapters } from '../lib/freeChapters';
 
 interface CachedEntitlement {
   entitlement: Entitlement | null;
@@ -189,19 +191,41 @@ export const libraryService = {
 
   flushPendingProgress,
 
+  /** Loads the plan behind the user's active subscription (cached by settingsService). */
+  async getSubscriptionPlan(profile: UserProfile | null): Promise<Plan | null> {
+    const sub = profile?.subscription;
+    if (!sub || sub.expiresAt <= Date.now() || sub.planId === 'admin_grant') return null;
+    try {
+      const plans = await settingsService.getPlans();
+      return plans.find(p => p.id === sub.planId) || null;
+    } catch {
+      return null;
+    }
+  },
+
+  /** Mirrors firestore.rules: does this subscription unlock this novel? */
+  subscriptionCoversNovel(profile: UserProfile | null, plan: Plan | null, novelId: string): boolean {
+    const sub = profile?.subscription;
+    if (!sub || sub.expiresAt <= Date.now()) return false;
+    if (sub.planId === 'admin_grant') return true;
+    if (!plan || plan.id !== sub.planId) return false;
+    return plan.accessAll === true || (plan.novelIds || []).includes(novelId);
+  },
+
   checkChapterUnlocked(
     novel: Novel,
     chapter: ChapterMeta,
     profile: UserProfile | null,
     entitlement: Entitlement | null,
-    isAdmin = false
+    isAdmin = false,
+    plan: Plan | null = null
   ): { isUnlocked: boolean; reason: 'free' | 'novel_entitlement' | 'book_entitlement' | 'subscription' | 'admin' | 'locked' } {
     if (isAdmin) {
       return { isUnlocked: true, reason: 'admin' };
     }
 
     // 1. Chapter is explicitly free OR chapter number <= novel.freeChapters
-    if (chapter.isFree || (novel.freeChapters && chapter.number <= novel.freeChapters)) {
+    if (chapter.isFree || isWithinFreeChapters(chapter.number, novel.freeChapters)) {
       return { isUnlocked: true, reason: 'free' };
     }
 
@@ -213,8 +237,8 @@ export const libraryService = {
       };
     }
 
-    // 3. User has active subscription
-    if (profile?.subscription && profile.subscription.expiresAt > Date.now()) {
+    // 3. Active subscription whose plan includes THIS novel
+    if (this.subscriptionCoversNovel(profile, plan, novel.id)) {
       return { isUnlocked: true, reason: 'subscription' };
     }
 
