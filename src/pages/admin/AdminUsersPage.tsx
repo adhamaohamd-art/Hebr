@@ -20,7 +20,7 @@ import {
   Shield,
   MessageSquare,
 } from 'lucide-react';
-import { doc, setDoc, QueryDocumentSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, QueryDocumentSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { LoadingState } from '../../components/States';
 import { novelService } from '../../services/novelService';
@@ -74,6 +74,26 @@ export const AdminUsersPage: React.FC = () => {
   const [selectedNovelId, setSelectedNovelId] = useState('');
   const [entType, setEntType] = useState<'novel' | 'book'>('novel');
   const [subMonths, setSubMonths] = useState(1);
+  // Writer (كاتب) quota granted by the admin + how many novels the user already has
+  const [writerLimitInput, setWriterLimitInput] = useState(0);
+  const [writerUsed, setWriterUsed] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!managingAccessUser) return;
+    setWriterLimitInput(Math.max(0, Math.floor(Number(managingAccessUser.writerLimit) || 0)));
+    setWriterUsed(null);
+    let cancelled = false;
+    getDoc(doc(db, 'writerStats', managingAccessUser.uid))
+      .then(snap => {
+        if (!cancelled) setWriterUsed(snap.exists() ? Math.max(0, Math.floor(Number(snap.data().novelCount) || 0)) : 0);
+      })
+      .catch(() => {
+        if (!cancelled) setWriterUsed(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [managingAccessUser]);
 
   // Review Moderation State
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -375,6 +395,20 @@ export const AdminUsersPage: React.FC = () => {
     }
   };
 
+  const handleSaveWriterLimit = async () => {
+    if (!managingAccessUser) return;
+    const limit = Math.max(0, Math.min(50, Math.floor(Number(writerLimitInput) || 0)));
+    try {
+      await setDoc(doc(db, 'users', managingAccessUser.uid), { writerLimit: limit }, { merge: true });
+      setManagingAccessUser({ ...managingAccessUser, writerLimit: limit });
+      showToast('success', t.common.success);
+      await fetchUsers();
+    } catch (err: unknown) {
+      if (import.meta.env.DEV) console.error(err);
+      showToast('error', t.common.error);
+    }
+  };
+
   const handleRevokeSubscription = async () => {
     if (!managingAccessUser) return;
     if (!window.confirm('هل أنت متأكد من إلغاء اشتراك المستخدم؟')) return;
@@ -628,6 +662,11 @@ export const AdminUsersPage: React.FC = () => {
                               </span>
                             ) : (
                               <span className="text-xs text-[var(--muted)]">{t.adminUsers.noSub}</span>
+                            )}
+                            {(u.writerLimit ?? 0) > 0 && (
+                              <span className="inline-block mt-1 text-[10px] px-1.5 bg-sky-100 text-sky-900">
+                                {language === 'ar' ? `كاتب · ${u.writerLimit}` : `Writer · ${u.writerLimit}`}
+                              </span>
                             )}
                           </td>
                           <td>
@@ -1347,6 +1386,36 @@ export const AdminUsersPage: React.FC = () => {
                     إلغاء الاشتراك
                   </button>
                 </div>
+              )}
+            </div>
+
+            {/* Writer (كاتب) quota */}
+            <div className="p-3 bg-sky-50 border border-sky-200 mb-4 space-y-2">
+              <span className="block text-xs font-semibold">
+                {language === 'ar' ? 'حساب الكاتب' : 'Writer account'}
+              </span>
+              <p className="text-[11px] text-[var(--muted)]">
+                {language === 'ar'
+                  ? 'عدد الروايات التي يستطيع هذا المستخدم كتابتها ونشرها (0 = ليس كاتبًا). يُضاف إلى ما تمنحه باقته إن وُجد، ويُؤخذ الأكبر منهما.'
+                  : 'How many novels this user may write and publish (0 = not a writer). Combined with their plan’s quota; the larger one applies.'}
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  value={writerLimitInput}
+                  onChange={e => setWriterLimitInput(Number(e.target.value))}
+                  className="w-16 p-1 border text-xs bg-white"
+                />
+                <button onClick={handleSaveWriterLimit} className="primary-button small ms-auto text-xs">
+                  {t.common.save}
+                </button>
+              </div>
+              {writerUsed !== null && (
+                <span className="block text-[11px] text-sky-900">
+                  {language === 'ar' ? `أنشأ حتى الآن: ${writerUsed} رواية` : `Novels created so far: ${writerUsed}`}
+                </span>
               )}
             </div>
 

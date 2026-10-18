@@ -102,6 +102,14 @@ export const PlansPage: React.FC = () => {
                 <p>{localized.description}</p>
                 <div className="plan-rule" />
                 <span className="included-label">{t.plans.includesAccessTo}</span>
+                {(plan.writerNovelLimit ?? 0) > 0 && (
+                  <span className="included">
+                    <Check size={14} />
+                    {language === 'ar'
+                      ? `حساب كاتب: اكتب وانشر حتى ${plan.writerNovelLimit} روايات`
+                      : `Writer account: write and publish up to ${plan.writerNovelLimit} novels`}
+                  </span>
+                )}
                 {localized.books.map(book => (
                   <span className="included" key={book}>
                     <Check size={14} />

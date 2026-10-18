@@ -96,7 +96,13 @@ export const NovelCard: React.FC<NovelCardProps> = ({ novel, compact = false }) 
                 ({ratingSummary.visitorCount})
               </span>
             </span>
-            {novel.novelPrice ? (
+            {novel.isFreeNovel ? (
+              <span className="card-prices">
+                <span className="font-semibold text-[var(--green)]">
+                  {language === 'ar' ? 'مجانية' : 'Free'}
+                </span>
+              </span>
+            ) : novel.novelPrice ? (
               <span className="card-prices">
                 <span className="font-semibold text-[var(--green)]">
                   {novel.novelPrice} {t.common.currency}

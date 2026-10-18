@@ -207,9 +207,15 @@ export const StorePage: React.FC = () => {
                       </div>
                       <div className="buy-option-action">
                         <span className="book-price">
-                          {novel.novelPrice}<small>{t.common.currency}</small>
+                          {novel.isFreeNovel
+                            ? (language === 'ar' ? 'مجانية' : 'Free')
+                            : <>{novel.novelPrice}<small>{t.common.currency}</small></>}
                         </span>
-                        {novelOwned ? (
+                        {novel.isFreeNovel ? (
+                          <Link to={`/novel/${novel.id}/chapter/1`} className="primary-button small">
+                            {t.store.readNowBtn}
+                          </Link>
+                        ) : novelOwned ? (
                           <span className="buy-owned"><Check size={14} />{t.store.ownedShort}</span>
                         ) : (
                           <button

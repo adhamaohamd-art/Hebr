@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Edit2, Trash2, Eye, EyeOff, X, Star, SlidersHorizontal as Sliders } from 'lucide-react';
+import { Plus, Edit2, Trash2, Eye, EyeOff, X, Star, SlidersHorizontal as Sliders, CheckCircle2, XCircle } from 'lucide-react';
 import { Cover } from '../../components/Cover';
 import { LoadingState } from '../../components/States';
 import { novelService } from '../../services/novelService';
@@ -56,10 +56,36 @@ export const AdminNovelsPage: React.FC = () => {
       novelPrice: 40,
       bookPrice: 60,
       freeChapters: 2,
+      isFreeNovel: false,
       chaptersCount: 0,
       published: true,
       coverUrl: '',
     });
+  };
+
+  // A writer's submission: open the normal edit form pre-set to "approved + published" so the admin
+  // can set the price / free chapters (writers cannot) and press save to make it public.
+  const handleApprove = (novel: Novel) => {
+    setErrorMsg('');
+    setEditingNovel({ ...novel, published: true, reviewStatus: 'approved', reviewNote: '' });
+  };
+
+  const handleReject = async (novel: Novel) => {
+    const note = window.prompt(
+      language === 'ar' ? 'سبب الرفض (يظهر للكاتب):' : 'Reason for rejection (shown to the writer):',
+      ''
+    );
+    if (note === null) return;
+    try {
+      setErrorMsg('');
+      await novelService.saveNovel(
+        { published: false, reviewStatus: 'rejected', reviewNote: note.trim().slice(0, 300) },
+        novel.id
+      );
+      await fetchNovels();
+    } catch (err: unknown) {
+      setErrorMsg(getAdminErrorMessage(err));
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -68,7 +94,12 @@ export const AdminNovelsPage: React.FC = () => {
     try {
       setSaving(true);
       setErrorMsg('');
-      await novelService.saveNovel(editingNovel, editingNovel.id);
+      const savedId = await novelService.saveNovel(editingNovel, editingNovel.id);
+      // Writers update chapters on the novel document only (they cannot write the public catalog):
+      // refresh the summary + catalog chapter count when the admin publishes their novel.
+      if (editingNovel.ownerId && editingNovel.published) {
+        await novelService.syncNovelChaptersSummary(savedId);
+      }
       setEditingNovel(null);
       setToastMsg(t.common.success);
       setTimeout(() => setToastMsg(''), 3000);
@@ -100,7 +131,12 @@ export const AdminNovelsPage: React.FC = () => {
   const handleTogglePublish = async (novel: Novel) => {
     try {
       setErrorMsg('');
-      await novelService.saveNovel({ published: !novel.published }, novel.id);
+      const turningOn = !novel.published;
+      await novelService.saveNovel(
+        { published: turningOn, ...(novel.ownerId && turningOn ? { reviewStatus: 'approved' as const } : {}) },
+        novel.id
+      );
+      if (novel.ownerId && turningOn) await novelService.syncNovelChaptersSummary(novel.id);
       await fetchNovels();
     } catch (err: unknown) {
       setErrorMsg(getAdminErrorMessage(err));
@@ -168,6 +204,13 @@ export const AdminNovelsPage: React.FC = () => {
                         <small className="block text-[var(--muted)]">
                           {novel.chaptersCount} {t.common.chaptersCount}
                         </small>
+                        {novel.ownerId && (
+                          <span className="inline-block mt-0.5 text-[10px] px-1.5 bg-sky-100 text-sky-900">
+                            {language === 'ar' ? 'كاتب' : 'Writer'}
+                            {novel.reviewStatus === 'pending' ? (language === 'ar' ? ' · بانتظار المراجعة' : ' · awaiting review') : ''}
+                            {novel.reviewStatus === 'rejected' ? (language === 'ar' ? ' · مرفوضة' : ' · rejected') : ''}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -180,7 +223,9 @@ export const AdminNovelsPage: React.FC = () => {
                     {novel.bookPrice ? `${novel.bookPrice} ${t.common.currency}` : '—'}
                   </td>
                   <td>
-                    {t.adminNovels.firstNChaptersFree.replace('{n}', String(novel.freeChapters || 1))}
+                    {novel.isFreeNovel
+                      ? (language === 'ar' ? 'مجانية بالكامل' : 'Fully free')
+                      : t.adminNovels.firstNChaptersFree.replace('{n}', String(novel.freeChapters || 1))}
                   </td>
                   <td>
                     <span className={`status-pill ${novel.status === 'مكتملة' ? 'done' : ''}`}>
@@ -242,6 +287,26 @@ export const AdminNovelsPage: React.FC = () => {
                   </td>
                   <td>
                     <div className="flex items-center gap-2">
+                      {novel.ownerId && novel.reviewStatus === 'pending' && !novel.published && (
+                        <>
+                          <button
+                            onClick={() => handleApprove(novel)}
+                            className="p-1 text-emerald-700 hover:text-emerald-900"
+                            title={language === 'ar' ? 'اعتماد ونشر' : 'Approve & publish'}
+                            aria-label={language === 'ar' ? 'اعتماد ونشر' : 'Approve & publish'}
+                          >
+                            <CheckCircle2 size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleReject(novel)}
+                            className="p-1 text-red-600 hover:text-red-800"
+                            title={language === 'ar' ? 'رفض' : 'Reject'}
+                            aria-label={language === 'ar' ? 'رفض' : 'Reject'}
+                          >
+                            <XCircle size={16} />
+                          </button>
+                        </>
+                      )}
                       <button
                         onClick={() => navigate(`/admin/ratings?novelId=${novel.id}`)}
                         className="p-1 hover:text-amber-700 text-stone-500"
@@ -438,6 +503,33 @@ export const AdminNovelsPage: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {/* Fully free novel */}
+              <label className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-200 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={editingNovel.isFreeNovel === true}
+                  onChange={e => setEditingNovel({ ...editingNovel, isFreeNovel: e.target.checked })}
+                />
+                <span>
+                  <b>{language === 'ar' ? 'رواية مجانية بالكامل' : 'Fully free novel'}</b>
+                  <span className="block text-[var(--muted)] mt-0.5">
+                    {language === 'ar'
+                      ? 'كل فصولها (الحالية والجديدة) يقرؤها الجميع ببلاش، ويختفي زر الشراء. الأسعار وعدد الفصول المجانية أدناه لا تُستخدم.'
+                      : 'Every chapter (current and future) is free for everyone and the buy button is hidden. The prices and free-chapters count below are ignored.'}
+                  </span>
+                </span>
+              </label>
+
+              {/* Writer submission note */}
+              {editingNovel.ownerId && (
+                <div className="p-3 bg-sky-50 border border-sky-200 text-xs text-sky-900">
+                  {language === 'ar'
+                    ? 'هذه رواية كاتب. حدّد السعر وعدد الفصول المجانية (أو اجعلها مجانية)، ثم احفظ لنشرها.'
+                    : "This is a writer's novel. Set the price and free chapters (or make it free), then save to publish."}
+                </div>
+              )}
 
               {/* Descriptions */}
               <div>

@@ -47,6 +47,163 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------------------------------
+    // Writers (كتّاب). A reader may own novels up to a quota:
+    //   quota = larger of  users/{uid}.writerLimit            (granted by an admin)
+    //           and        plans/{subscription.planId}.writerNovelLimit  (while the subscription is active)
+    // The number of novels a writer owns lives in writerStats/{uid}.novelCount. It can only move by
+    // exactly +1 / -1 in the SAME batch as the creation / deletion of a novel owned by that writer
+    // (get = state before, getAfter = state after), so neither the counter nor the quota can be
+    // forged from the browser. Same pattern as the rating aggregates below.
+    //
+    // Writers can NEVER: publish (published stays false until an admin approves), set prices,
+    // free-chapter flags, ratings, or touch catalog/home. Admin approval makes the novel public.
+    // ---------------------------------------------------------------------------------------
+
+    // Quota coming from the plan of an ACTIVE subscription ('admin_grant' carries no writer quota).
+    function planWriterLimit(u) {
+      return (u.get('subscription', null) != null &&
+              u.subscription.expiresAt > request.time.toMillis() &&
+              u.subscription.planId != 'admin_grant' &&
+              exists(/databases/$(database)/documents/plans/$(u.subscription.planId)))
+        ? get(/databases/$(database)/documents/plans/$(u.subscription.planId)).data.get('writerNovelLimit', 0)
+        : 0;
+    }
+
+    function writerQuota() {
+      let u = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      let personal = u.get('writerLimit', 0);
+      let fromPlan = planWriterLimit(u);
+      return personal > fromPlan ? personal : fromPlan;
+    }
+
+    function writerCanWrite() {
+      return isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        isUserActive(request.auth.uid);
+    }
+
+    function isNovelOwner(novelId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/novels/$(novelId)).data.get('ownerId', '') == request.auth.uid;
+    }
+
+    // A writer creates a novel: private draft, no price, counter +1 in the same batch, within quota.
+    function writerNovelCreateOk(novelId) {
+      let d = request.resource.data;
+      let statsPath = /databases/$(database)/documents/writerStats/$(request.auth.uid);
+      return writerCanWrite() &&
+        d.ownerId == request.auth.uid &&
+        d.keys().hasOnly([
+          'title', 'titleEn', 'author', 'authorEn', 'genre', 'genreEn', 'genres', 'status',
+          'description', 'descriptionEn', 'coverUrl', 'color', 'accent',
+          'novelPrice', 'bookPrice', 'freeChapters', 'chaptersCount', 'chaptersSummary',
+          'published', 'ownerId', 'reviewStatus', 'createdAt', 'createdAtMs', 'updatedAt'
+        ]) &&
+        d.get('published', false) == false &&
+        d.get('reviewStatus', 'draft') in ['draft', 'pending'] &&
+        d.get('novelPrice', 0) == 0 &&
+        d.get('freeChapters', 0) == 0 &&
+        d.get('bookPrice', null) == null &&
+        d.get('chaptersCount', 0) == 0 &&
+        d.title is string && d.title.size() >= 1 && d.title.size() <= 120 &&
+        d.get('author', '').size() <= 80 &&
+        d.get('description', '').size() <= 2000 &&
+        existsAfter(statsPath) &&
+        getAfter(statsPath).data.lastNovelId == novelId &&
+        getAfter(statsPath).data.novelCount ==
+          (exists(statsPath) ? get(statsPath).data.get('novelCount', 0) : 0) + 1 &&
+        getAfter(statsPath).data.novelCount <= writerQuota();
+    }
+
+    // A writer edits their own novel: descriptive fields + chapter summary only; may send it for
+    // review (draft/rejected -> pending) or take it back (pending -> draft). Never publish/price.
+    function writerNovelUpdateOk() {
+      let d = request.resource.data;
+      let changed = d.diff(resource.data).affectedKeys();
+      return writerCanWrite() &&
+        resource.data.get('ownerId', '') == request.auth.uid &&
+        changed.hasOnly([
+          'title', 'titleEn', 'author', 'authorEn', 'genre', 'genreEn', 'genres', 'status',
+          'description', 'descriptionEn', 'coverUrl', 'color', 'accent',
+          'chaptersSummary', 'chaptersCount', 'reviewStatus', 'updatedAt'
+        ]) &&
+        (!changed.hasAny(['reviewStatus']) ||
+          (resource.data.get('reviewStatus', 'draft') in ['draft', 'pending', 'rejected'] &&
+           d.reviewStatus in ['draft', 'pending'])) &&
+        d.title.size() >= 1 && d.title.size() <= 120 &&
+        d.get('author', '').size() <= 80 &&
+        d.get('description', '').size() <= 2000;
+    }
+
+    // A writer deletes their own novel: the counter must go -1 in the same batch.
+    function writerNovelDeleteOk(novelId) {
+      let statsPath = /databases/$(database)/documents/writerStats/$(request.auth.uid);
+      return isSignedIn() &&
+        resource.data.get('ownerId', '') == request.auth.uid &&
+        existsAfter(statsPath) &&
+        getAfter(statsPath).data.lastNovelId == novelId &&
+        getAfter(statsPath).data.novelCount == get(statsPath).data.get('novelCount', 0) - 1;
+    }
+
+    // writerStats/{uid}: +1 only together with a NEW novel owned by uid (within quota),
+    // -1 only together with the deletion of a novel owned by uid.
+    function writerStatsWriteOk(uid) {
+      let d = request.resource.data;
+      let before = resource == null ? 0 : resource.data.get('novelCount', 0);
+      let novelPath = /databases/$(database)/documents/novels/$(d.lastNovelId);
+      return isOwner(uid) && writerCanWrite() &&
+        d.keys().hasOnly(['novelCount', 'lastNovelId', 'updatedAt']) &&
+        d.lastNovelId is string && d.novelCount is int &&
+        (
+          (d.novelCount == before + 1 && d.novelCount <= writerQuota() &&
+           !exists(novelPath) && existsAfter(novelPath) &&
+           getAfter(novelPath).data.get('ownerId', '') == uid)
+          ||
+          (d.novelCount == before - 1 && d.novelCount >= 0 &&
+           exists(novelPath) && !existsAfter(novelPath) &&
+           get(novelPath).data.get('ownerId', '') == uid)
+        );
+    }
+
+    // Writer chapters: title/number/published only. They can never set isFree (free vs paid is the
+    // admin's call, through novels.freeChapters / novels.isFreeNovel).
+    function writerChapterCreateOk(novelId) {
+      let d = request.resource.data;
+      return isNovelOwner(novelId) && writerCanWrite() &&
+        d.novelId == novelId &&
+        d.keys().hasOnly(['novelId', 'number', 'title', 'titleEn', 'published', 'createdAt', 'updatedAt']) &&
+        d.number is int && d.number >= 1 && d.number <= 500 &&
+        d.title is string && d.title.size() <= 150 &&
+        d.get('titleEn', '').size() <= 150 &&
+        d.get('published', false) is bool;
+    }
+
+    function writerChapterUpdateOk(novelId) {
+      let d = request.resource.data;
+      return isNovelOwner(novelId) && writerCanWrite() &&
+        d.novelId == novelId &&
+        d.diff(resource.data).affectedKeys().hasOnly(['number', 'title', 'titleEn', 'published', 'updatedAt']) &&
+        d.number is int && d.number >= 1 && d.number <= 500 &&
+        d.title.size() <= 150 &&
+        d.get('titleEn', '').size() <= 150;
+    }
+
+    function writerContentCreateOk() {
+      let d = request.resource.data;
+      return isNovelOwner(d.novelId) && writerCanWrite() &&
+        d.keys().hasOnly(['novelId', 'body']) &&
+        d.body is string && d.body.size() <= 200000;
+    }
+
+    function writerContentUpdateOk() {
+      let d = request.resource.data;
+      return isNovelOwner(resource.data.novelId) && writerCanWrite() &&
+        d.novelId == resource.data.novelId &&
+        d.diff(resource.data).affectedKeys().hasOnly(['body']) &&
+        d.body is string && d.body.size() <= 200000;
+    }
+
+    // ---------------------------------------------------------------------------------------
     // Rating aggregates (novels/{id}) are maintained by the browser, so the rules re-check the
     // arithmetic: the novel's counters may only move by exactly the effect of the reader's own
     // review in the SAME batch/transaction (get = state before, getAfter = state after).
@@ -166,8 +323,11 @@ service cloud.firestore {
 
     // Novels metadata and rating summaries
     match /novels/{novelId} {
-      allow read: if resource.data.published == true || isAdmin();
-      allow create, delete: if isAdmin();
+      // Public when published; a writer can always read their own (draft / pending) novels.
+      allow read: if resource.data.published == true || isAdmin() ||
+        (isSignedIn() && resource.data.ownerId == request.auth.uid);
+      allow create: if isAdmin() || writerNovelCreateOk(novelId);
+      allow delete: if isAdmin() || writerNovelDeleteOk(novelId);
       // Readers may only move the rating counters by the effect of THEIR OWN review, written in
       // the same batch/transaction (reviews/{novelId}_{uid}); see novelAggregatesMatch above.
       allow update: if isAdmin() || (
@@ -176,12 +336,14 @@ service cloud.firestore {
           'visitorRatingAverage', 'visitorRatingCount', 'ratingDistribution', 'rating', 'updatedAt'
         ]) &&
         novelAggregatesMatchForOwnReview(novelId)
-      );
+      ) || writerNovelUpdateOk();
 
       // Chapter metadata subcollection
       match /chapters/{chapterId} {
-        allow read: if resource.data.published == true || isAdmin();
-        allow write: if isAdmin();
+        allow read: if resource.data.published == true || isAdmin() || isNovelOwner(novelId);
+        allow create: if isAdmin() || writerChapterCreateOk(novelId);
+        allow update: if isAdmin() || writerChapterUpdateOk(novelId);
+        allow delete: if isAdmin() || isNovelOwner(novelId);
       }
     }
 
@@ -189,20 +351,24 @@ service cloud.firestore {
     match /chapterContents/{chapterId} {
       allow read: if resource.data.get('isFree', false) == true ||
         isAdmin() ||
+        (resource.data.novelId != null && isNovelOwner(resource.data.novelId)) ||
         (resource.data.novelId != null && hasNovelEntitlement(resource.data.novelId)) ||
         (resource.data.novelId != null && hasActiveSubscriptionFor(resource.data.novelId)) ||
         // Same rule as the UI (src/lib/freeChapters.ts): chapter flagged isFree OR its number is
-        // within the novel's freeChapters setting.
+        // within the novel's freeChapters setting OR the whole novel is flagged isFreeNovel.
         (
           resource.data.novelId != null &&
           exists(/databases/$(database)/documents/novels/$(resource.data.novelId)/chapters/$(chapterId)) &&
           (
             get(/databases/$(database)/documents/novels/$(resource.data.novelId)/chapters/$(chapterId)).data.get('isFree', false) == true ||
             get(/databases/$(database)/documents/novels/$(resource.data.novelId)/chapters/$(chapterId)).data.get('number', 0) <=
-              get(/databases/$(database)/documents/novels/$(resource.data.novelId)).data.get('freeChapters', 0)
+              get(/databases/$(database)/documents/novels/$(resource.data.novelId)).data.get('freeChapters', 0) ||
+            get(/databases/$(database)/documents/novels/$(resource.data.novelId)).data.get('isFreeNovel', false) == true
           )
         );
-      allow write: if isAdmin();
+      allow create: if isAdmin() || writerContentCreateOk();
+      allow update: if isAdmin() || writerContentUpdateOk();
+      allow delete: if isAdmin() || (resource.data.novelId != null && isNovelOwner(resource.data.novelId));
     }
 
     // Novel Reviews and Genuine Ratings
@@ -296,7 +462,7 @@ service cloud.firestore {
       allow update: if (
         isOwner(userId) &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-          'subscription', 'status', 'restrictedReason', 'restrictedAt'
+          'subscription', 'status', 'restrictedReason', 'restrictedAt', 'writerLimit'
         ]) &&
         request.resource.data.name.size() >= 2 &&
         request.resource.data.name.size() <= 60
@@ -314,6 +480,13 @@ service cloud.firestore {
       match /library/{novelId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
+    }
+
+    // Writer counters (see writerStatsWriteOk). Owner reads their own; only +1/-1 with a novel create/delete.
+    match /writerStats/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create, update: if isAdmin() || writerStatsWriteOk(uid);
+      allow delete: if isAdmin();
     }
 
     // Orders (Manual transfer without storage uploads)

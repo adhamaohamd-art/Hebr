@@ -14,6 +14,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { libraryService } from '../services/libraryService';
 import { UserProfile, UserSubscription } from '../types';
+import { computeWriterLimit } from '../lib/writer';
 
 interface AuthContextType {
   user: User | null;
@@ -21,6 +22,8 @@ interface AuthContextType {
   isAdmin: boolean;
   subscription: UserSubscription | null;
   isSubscribed: boolean;
+  /** How many novels this user may own as a writer (admin grant or subscription plan); 0 = not a writer. */
+  writerLimit: number;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (e: string, p: string) => Promise<void>;
@@ -41,6 +44,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [emailVerified, setEmailVerified] = useState<boolean>(false);
+  const [writerLimit, setWriterLimit] = useState<number>(0);
+
+  // Writer quota = larger of the admin-granted users/{uid}.writerLimit and the active plan's writerNovelLimit.
+  useEffect(() => {
+    let cancelled = false;
+    async function resolveWriterLimit() {
+      if (!profile) {
+        setWriterLimit(0);
+        return;
+      }
+      const plan = await libraryService.getSubscriptionPlan(profile); // null for expired / admin_grant
+      if (!cancelled) setWriterLimit(computeWriterLimit(profile, plan));
+    }
+    resolveWriterLimit();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile]);
 
   // Synchronize profile and admin status once per session when auth state changes (no persistent listener)
   useEffect(() => {
@@ -195,6 +216,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfile(null);
     setIsAdmin(false);
     setEmailVerified(false);
+    setWriterLimit(0);
   };
 
   const subscription = profile?.subscription || null;
@@ -208,6 +230,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin,
         subscription,
         isSubscribed,
+        writerLimit,
         loading,
         emailVerified,
         signInWithGoogle,

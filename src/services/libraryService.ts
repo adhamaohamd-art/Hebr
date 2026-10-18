@@ -9,7 +9,7 @@ import {
 import { db } from '../lib/firebase';
 import { Entitlement, UserLibraryItem, Novel, ChapterMeta, UserProfile, Plan } from '../types';
 import { settingsService } from './settingsService';
-import { isWithinFreeChapters } from '../lib/freeChapters';
+import { isChapterFree } from '../lib/freeChapters';
 
 interface CachedEntitlement {
   entitlement: Entitlement | null;
@@ -224,8 +224,8 @@ export const libraryService = {
       return { isUnlocked: true, reason: 'admin' };
     }
 
-    // 1. Chapter is explicitly free OR chapter number <= novel.freeChapters
-    if (chapter.isFree || isWithinFreeChapters(chapter.number, novel.freeChapters)) {
+    // 1. Whole novel is free, OR chapter is explicitly free, OR chapter number <= novel.freeChapters
+    if (isChapterFree(chapter.number, novel, chapter.isFree)) {
       return { isUnlocked: true, reason: 'free' };
     }
 

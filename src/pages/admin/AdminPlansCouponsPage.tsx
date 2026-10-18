@@ -192,6 +192,14 @@ export const AdminPlansCouponsPage: React.FC = () => {
                   </div>
                   <p className="text-xs text-[var(--muted)] mb-4">{localized.description}</p>
                   <div className="space-y-1 mb-6 text-xs">
+                    {(plan.writerNovelLimit ?? 0) > 0 && (
+                      <div className="flex items-center gap-1.5 text-sky-900 font-medium">
+                        <Check size={13} className="text-sky-700 flex-shrink-0" />
+                        {language === 'ar'
+                          ? `حساب كاتب: نشر حتى ${plan.writerNovelLimit} روايات`
+                          : `Writer account: publish up to ${plan.writerNovelLimit} novels`}
+                      </div>
+                    )}
                     {localized.books?.map((b, i) => (
                       <div key={i} className="flex items-center gap-1.5 text-stone-700">
                         <Check size={13} className="text-[var(--bronze)] flex-shrink-0" /> {b}
@@ -456,6 +464,27 @@ export const AdminPlansCouponsPage: React.FC = () => {
                     )}
                   </div>
                 )}
+              </div>
+
+              <div className="border border-[var(--line)] p-2 space-y-1">
+                <label className="block text-xs font-medium">
+                  {language === 'ar' ? 'حساب الكاتب: عدد الروايات التي يستطيع المشترك كتابتها ونشرها' : 'Writer account: novels a subscriber may write and publish'}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  value={editingPlan.writerNovelLimit ?? 0}
+                  onChange={e =>
+                    setEditingPlan({ ...editingPlan, writerNovelLimit: Math.max(0, Math.floor(Number(e.target.value) || 0)) })
+                  }
+                  className="w-24 p-2 border border-[var(--line)] text-xs"
+                />
+                <p className="text-[11px] text-[var(--muted)]">
+                  {language === 'ar'
+                    ? '0 = هذه الباقة بلا حساب كاتب. مثال: اكتب 2 لباقة «فريق حبر» ليستطيع المشترك نشر روايتين. يسري الحد طالما الاشتراك فعّال.'
+                    : '0 = no writer account in this plan. Example: 2 lets the subscriber publish two novels while the subscription is active.'}
+                </p>
               </div>
 
               <div className="flex items-center gap-2">

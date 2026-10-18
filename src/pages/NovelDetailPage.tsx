@@ -173,7 +173,7 @@ export const NovelDetailPage: React.FC = () => {
               <small>{t.common.chaptersCount}</small>
             </span>
             <span>
-              <b>{novel.freeChapters || 1}</b>
+              <b>{novel.isFreeNovel ? (language === 'ar' ? 'الكل' : 'All') : novel.freeChapters || 1}</b>
               <small>{t.novelDetail.freeChaptersStat}</small>
             </span>
             {(() => {
@@ -217,7 +217,13 @@ export const NovelDetailPage: React.FC = () => {
               </button>
             )}
 
-            {!hasPurchasedNovel && (
+            {novel.isFreeNovel && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-2 bg-[var(--green)] text-white text-xs font-medium">
+                <Check size={15} /> {language === 'ar' ? 'رواية مجانية — اقرأها بالكامل بلا اشتراك' : 'Free novel — read it all, no subscription needed'}
+              </span>
+            )}
+
+            {!hasPurchasedNovel && !novel.isFreeNovel && (
               <button className="outline-button" onClick={handleAddNovel}>
                 <ShoppingBag size={17} />
                 {t.novelDetail.acquireNovelBtn} · {novel.novelPrice} {t.common.currency}

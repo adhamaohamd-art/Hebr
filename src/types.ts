@@ -9,6 +9,9 @@ export interface ChapterSummaryItem {
   isFree: boolean;
 }
 
+/** Life cycle of a writer's novel: draft -> pending (sent to admin) -> approved | rejected. */
+export type NovelReviewStatus = 'draft' | 'pending' | 'approved' | 'rejected';
+
 export type RatingDisplayMode = 'visitor' | 'editorial' | 'custom' | 'combined' | 'blended';
 
 export interface RatingDistribution {
@@ -75,9 +78,15 @@ export interface Novel {
   bookPrice: number | null; // in EGP (ج.م), null if no digital book edition
   bookFileUrl?: string;
   freeChapters: number; // e.g. first N chapters free
+  isFreeNovel?: boolean; // true = the WHOLE novel is free to read (every chapter), whatever freeChapters says
   chaptersCount: number;
   published: boolean;
   featured?: boolean;
+  // Writer (كاتب) submissions: ownerId is the uid of the writer who created the novel.
+  // Novels created by the admin have no ownerId.
+  ownerId?: string;
+  reviewStatus?: NovelReviewStatus;
+  reviewNote?: string; // admin's note when a submission is rejected
   rating?: string; // legacy displayed rating
   // Genuine Visitor Ratings
   visitorRatingAverage?: number;
@@ -140,6 +149,7 @@ export interface CatalogNovel {
   ratingsEnabled?: boolean;
   featured?: boolean;
   freeChapters?: number;
+  isFreeNovel?: boolean;
   createdAtMs?: number;
 }
 
@@ -191,6 +201,8 @@ export interface UserProfile {
   email: string;
   createdAt: unknown;
   subscription?: UserSubscription | null;
+  /** Number of novels this user may have as a writer, granted by an admin (0/undefined = none). */
+  writerLimit?: number;
   status?: AccountStatus;
   restrictedReason?: string;
   restrictedAt?: unknown;
@@ -225,7 +237,15 @@ export interface Plan {
   books: string[]; // display text only (marketing bullets); NOT used for access
   novelIds?: string[]; // novels this plan unlocks (enforced by firestore.rules)
   accessAll?: boolean; // true = plan unlocks every novel
+  writerNovelLimit?: number; // > 0 = subscribers may write/publish up to this many novels (enforced by firestore.rules)
   featured?: boolean;
+}
+
+/** users' writer counter: writerStats/{uid}. Moves by exactly +1/-1 together with a novel create/delete (see firestore.rules). */
+export interface WriterStats {
+  novelCount: number;
+  lastNovelId?: string;
+  updatedAt?: unknown;
 }
 
 export interface CartItem {

@@ -17,6 +17,7 @@ const PlansPage = lazy(() => import('./pages/PlansPage').then(m => ({ default: m
 const LibraryPage = lazy(() => import('./pages/LibraryPage').then(m => ({ default: m.LibraryPage })));
 const CartPage = lazy(() => import('./pages/CartPage').then(m => ({ default: m.CartPage })));
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage').then(m => ({ default: m.CheckoutPage })));
+const WriterPage = lazy(() => import('./pages/WriterPage').then(m => ({ default: m.WriterPage })));
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
 
@@ -112,6 +113,7 @@ const AppShell: React.FC = () => {
           <Route path="/cart" element={<CartPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/writer" element={<WriterPage />} />
 
           {/* Admin Nested Routes */}
           <Route path="/admin" element={<AdminLayout />}>

@@ -293,7 +293,11 @@ export const AdminChaptersPage: React.FC = () => {
         {selectedNovel && (
           <span className="text-xs text-[var(--muted)]">
             {t.adminNovels.freeChapters}:{' '}
-            <b>{t.adminNovels.firstNChaptersFree.replace('{n}', String(selectedNovel.freeChapters || 1))}</b>
+            <b>
+              {selectedNovel.isFreeNovel
+                ? (language === 'ar' ? 'الرواية كلها مجانية' : 'The whole novel is free')
+                : t.adminNovels.firstNChaptersFree.replace('{n}', String(selectedNovel.freeChapters || 1))}
+            </b>
           </span>
         )}
       </div>
@@ -327,13 +331,13 @@ export const AdminChaptersPage: React.FC = () => {
                     <td>
                       <span
                         className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold ${
-                          ch.isFree
+                          ch.isFree || selectedNovel?.isFreeNovel
                             ? 'bg-emerald-100 text-emerald-800'
                             : 'bg-amber-100 text-amber-800'
                         }`}
                       >
-                        {ch.isFree ? <Unlock size={12} /> : <Lock size={12} />}
-                        {ch.isFree ? t.adminChapters.freeBadge : t.adminChapters.lockedBadge}
+                        {ch.isFree || selectedNovel?.isFreeNovel ? <Unlock size={12} /> : <Lock size={12} />}
+                        {ch.isFree || selectedNovel?.isFreeNovel ? t.adminChapters.freeBadge : t.adminChapters.lockedBadge}
                       </span>
                     </td>
                     <td>

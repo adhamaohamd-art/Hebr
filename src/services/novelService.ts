@@ -107,6 +107,7 @@ function toCatalogItem(novel: Novel): CatalogNovel {
     ratingsEnabled: novel.ratingsEnabled,
     featured: novel.featured,
     freeChapters: novel.freeChapters,
+    isFreeNovel: novel.isFreeNovel === true ? true : undefined,
     createdAtMs: novelCreatedMs(novel),
   }) as CatalogNovel;
 }
@@ -440,12 +441,24 @@ export const novelService = {
       await batch.commit();
     }
 
+    // A writer's novel: the owner gets the quota slot back (writerStats/{ownerId}.novelCount - 1).
+    const novelSnapBeforeDelete = await getDoc(doc(db, 'novels', novelId));
+    const ownerId = novelSnapBeforeDelete.exists()
+      ? ((novelSnapBeforeDelete.data() as Partial<Novel>).ownerId || '')
+      : '';
+
     const catRef = doc(db, ...CATALOG_DOC);
     await runTransaction(db, async tx => {
       const catSnap = await tx.get(catRef);
+      const statsRef = ownerId ? doc(db, 'writerStats', ownerId) : null;
+      const statsSnap = statsRef ? await tx.get(statsRef) : null;
       if (catSnap.exists()) {
         const items = ((catSnap.data() as CatalogDoc).novels || []).filter(n => n.id !== novelId);
         tx.set(catRef, { novels: stripUndefined(items), updatedAt: serverTimestamp() });
+      }
+      if (statsRef && statsSnap && statsSnap.exists()) {
+        const count = Math.max(0, Math.floor(Number(statsSnap.data().novelCount) || 0) - 1);
+        tx.set(statsRef, { novelCount: count, lastNovelId: novelId, updatedAt: serverTimestamp() }, { merge: true });
       }
       tx.delete(doc(db, 'novels', novelId));
     });

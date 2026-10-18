@@ -13,6 +13,7 @@ import {
   Sparkles,
   Home,
   LogOut,
+  Feather,
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -20,7 +21,7 @@ import { useCart } from '../context/CartContext';
 
 export const Header: React.FC = () => {
   const { t, language, toggleLanguage } = useLanguage();
-  const { user, profile, isAdmin, logout } = useAuth();
+  const { user, profile, isAdmin, logout, writerLimit } = useAuth();
   const { itemsCount } = useCart();
   const [mobileMenu, setMobileMenu] = useState(false);
   const navigate = useNavigate();
@@ -92,6 +93,16 @@ export const Header: React.FC = () => {
                 <CircleUserRound size={20} />
                 <span>{profile?.name || user.email?.split('@')[0]}</span>
               </Link>
+              {writerLimit > 0 && (
+                <Link
+                  to="/writer"
+                  className="icon-button text-[var(--bronze)]"
+                  title={language === 'ar' ? 'لوحة الكاتب' : 'Writer studio'}
+                  aria-label={language === 'ar' ? 'لوحة الكاتب' : 'Writer studio'}
+                >
+                  <Feather size={18} />
+                </Link>
+              )}
               {isAdmin && (
                 <Link
                   to="/admin"
@@ -176,6 +187,16 @@ export const Header: React.FC = () => {
             <div className="mt-4 pt-4 border-t border-[var(--line)]">
               {user ? (
                 <div className="space-y-1">
+                  {writerLimit > 0 && (
+                    <NavLink
+                      to="/writer"
+                      onClick={() => setMobileMenu(false)}
+                      className="w-full flex items-center gap-2 text-sm text-[var(--bronze)] p-2 font-medium"
+                    >
+                      <Feather size={16} />
+                      <span>{language === 'ar' ? 'لوحة الكاتب' : 'Writer studio'}</span>
+                    </NavLink>
+                  )}
                   {isAdmin && (
                     <NavLink
                       to="/admin"

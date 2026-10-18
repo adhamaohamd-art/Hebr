@@ -91,6 +91,20 @@ export const ReaderPage: React.FC = () => {
     }
   }, [readerSettings]);
 
+  // Chapter text is not meant to be copied or printed. This is a deterrent for normal readers
+  // (see .reading-body-protected in index.css); admins are exempt so they can proofread.
+  const protectText = !isAdmin;
+  useEffect(() => {
+    if (!protectText) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'p' || key === 's') e.preventDefault(); // print / save page
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [protectText]);
+
   useEffect(() => {
     async function loadReader() {
       if (!novelId || authLoading) return;
@@ -579,13 +593,24 @@ export const ReaderPage: React.FC = () => {
         ) : (
           /* Unlocked Content */
           <>
-            <div className="leading-relaxed">
+            <div
+              className={`leading-relaxed ${protectText ? 'reading-body-protected' : ''}`}
+              onCopy={protectText ? e => e.preventDefault() : undefined}
+              onCut={protectText ? e => e.preventDefault() : undefined}
+              onContextMenu={protectText ? e => e.preventDefault() : undefined}
+              onDragStart={protectText ? e => e.preventDefault() : undefined}
+            >
               {content.body.split('\n\n').map((paragraph, idx) => (
                 <p key={idx} style={{ fontSize: `${readerSettings.fontSize}px` }}>
                   {paragraph}
                 </p>
               ))}
             </div>
+            {protectText && (
+              <p className="print-only-notice">
+                {language === 'ar' ? 'نص هذا الفصل محمي ولا يمكن طباعته.' : 'The text of this chapter is protected and cannot be printed.'}
+              </p>
+            )}
 
             <aside className="author-note">
               <Feather size={18} />
