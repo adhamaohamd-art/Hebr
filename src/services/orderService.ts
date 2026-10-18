@@ -13,9 +13,11 @@ import {
 } from 'firebase/firestore';
 import { db, refreshAuthToken } from '../lib/firebase';
 import { libraryService } from './libraryService';
+import { settingsService } from './settingsService';
+import { allocateDiscount, cleanSharePercent, splitLine } from '../lib/earnings';
 import { sanitizeSingleLine, isValidEgyptianPhone, isValidTransactionRef } from '../lib/sanitize';
 import { LIMITS } from '../config';
-import { Order, OrderItem, PaymentMethod, Coupon } from '../types';
+import { Order, OrderItem, PaymentMethod, Coupon, Novel } from '../types';
 
 export interface CreateOrderInput {
   userId: string;
@@ -157,10 +159,33 @@ export const orderService = {
    * 2. Grants entitlements ('novel' or 'book')
    * 3. Sets subscription if a plan item is included
    * 4. Increments coupon usedCount atomically (if coupon used)
+   * 5. Writes one `sales` row per novel/book line that belongs to a writer, with the writer's share
+   *    (settings.writerSharePercent, default 70%) of what the reader really paid for that line.
    */
   async approveOrder(order: Order, adminNote?: string): Promise<void> {
     const batch = writeBatch(db);
     const orderRef = doc(db, 'orders', order.id);
+
+    // Data for the writers' ledger (read before the batch: owners of the novels, the coupon scope, the share %)
+    const settings = await settingsService.getSettings();
+    const sharePercent = cleanSharePercent(settings.writerSharePercent);
+    let couponNovelId: string | undefined;
+    if (order.couponCode) {
+      const cSnap = await getDoc(doc(db, 'coupons', order.couponCode.toUpperCase()));
+      couponNovelId = cSnap.exists() ? (cSnap.data() as Partial<Coupon>).novelId : undefined;
+    }
+    const eligible = order.items.map(i =>
+      !couponNovelId ? true : (i.type === 'novel' || i.type === 'book') && i.refId === couponNovelId
+    );
+    const lineDiscounts = allocateDiscount(order.items.map(i => i.price), eligible, order.discount || 0);
+    const novelCache = new Map<string, Partial<Novel> | null>();
+    const loadNovel = async (id: string) => {
+      if (!novelCache.has(id)) {
+        const snap = await getDoc(doc(db, 'novels', id));
+        novelCache.set(id, snap.exists() ? (snap.data() as Partial<Novel>) : null);
+      }
+      return novelCache.get(id) || null;
+    };
 
     // 1. Order status
     batch.update(orderRef, {
@@ -170,8 +195,27 @@ export const orderService = {
     });
 
     // 2. Entitlements & subscriptions
-    for (const item of order.items) {
+    for (let idx = 0; idx < order.items.length; idx++) {
+      const item = order.items[idx];
       if (item.type === 'novel' || item.type === 'book') {
+        const novel = await loadNovel(item.refId);
+        if (novel?.ownerId) {
+          const split = splitLine(item.price, lineDiscounts[idx], sharePercent);
+          batch.set(doc(db, 'sales', `${order.id}_${idx}`), {
+            orderId: order.id,
+            novelId: item.refId,
+            novelTitle: novel.title || item.title,
+            ownerId: novel.ownerId,
+            itemType: item.type,
+            gross: split.gross,
+            discount: split.discount,
+            net: split.net,
+            writerPercent: sharePercent,
+            writerShare: split.writerShare,
+            platformShare: split.platformShare,
+            createdAt: serverTimestamp(),
+          });
+        }
         const entitlementRef = doc(db, 'users', order.userId, 'entitlements', item.refId);
         batch.set(
           entitlementRef,

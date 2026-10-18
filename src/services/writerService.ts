@@ -9,21 +9,45 @@ import {
   writeBatch,
   Timestamp,
   DocumentReference,
+  deleteDoc,
+  setDoc,
+  increment,
+  arrayUnion,
 } from 'firebase/firestore';
 import { db, refreshAuthToken } from '../lib/firebase';
 import { clientCache } from '../lib/cache';
 import { normalizeHttpsUrl, sanitizeMultiLine, sanitizeSingleLine } from '../lib/sanitize';
 import { genreFieldsForSave } from '../lib/genres';
 import { LIMITS } from '../config';
-import { Novel, ChapterMeta, ChapterSummaryItem, NovelReviewStatus, WriterStats } from '../types';
+import { Novel, ChapterMeta, ChapterSummaryItem, NovelReviewStatus, WriterStats, Coupon, Sale, PlanRequest } from '../types';
+import { releaseStatus, formatWait } from '../lib/releaseSchedule';
 
 /**
  * Everything a WRITER (كاتب) can do. Mirrors the writer rules in firestore.rules:
  *  - a novel is created as a private draft (published=false, price 0) in the SAME batch that moves
  *    writerStats/{uid}.novelCount by +1 (the rules check that it stays within the quota);
  *  - descriptive fields and chapters can be edited, the novel can be sent for review;
- *  - publishing, pricing, free flags and the public catalog stay with the admin.
+ *  - the writer sets the price / free chapters / free-novel flag of their OWN novels (unless the admin locked
+ *    the price) and releases chapters on a cadence: first 3 any time, then 1 every 3 days;
+ *  - making a novel public (published) and the public catalog stay with the admin.
  */
+
+export interface WriterPricingInput {
+  novelPrice: number;
+  bookPrice: number | null;
+  freeChapters: number;
+  isFreeNovel: boolean;
+}
+
+export interface WriterCouponInput {
+  code: string;
+  novelId: string;
+  type: 'percent' | 'fixed';
+  value: number;
+  maxUses: number;
+  expiresAt: string | null;
+  active: boolean;
+}
 
 export interface WriterNovelInput {
   title: string;
@@ -232,26 +256,59 @@ export const writerService = {
     const isNew = !chapterId;
     const id = chapterId || doc(collection(db, 'novels', novelId, 'chapters')).id;
 
+    // Fresh state: the release cadence is decided on the novel's current counters.
+    const [novelSnap, existing] = await Promise.all([getDoc(doc(db, 'novels', novelId)), this.getChapters(novelId)]);
+    if (!novelSnap.exists()) throw new Error('الرواية غير موجودة.');
+    const novelData = novelSnap.data() as Novel;
+    const before = existing.find(c => c.id === id);
+    const wasPublished = Boolean(before?.published);
+    const willPublish = Boolean(input.published);
+    const releasing = willPublish && !wasPublished;
+
+    if (releasing) {
+      const st = releaseStatus(novelData.releaseCount, toMillis(novelData.lastReleaseAt));
+      if (!st.canRelease) {
+        throw new Error(
+          `لا يمكن نشر فصل جديد الآن. تستطيع نشر الفصل التالي بعد ${formatWait(st.waitMs, true)}. يمكنك حفظ هذا الفصل كمسودة وإتمامه لحين الموعد.`
+        );
+      }
+    }
+
+    const chapterFields = {
+      novelId,
+      number,
+      title,
+      titleEn: sanitizeSingleLine(input.titleEn || '').slice(0, LIMITS.chapterTitleMax),
+      published: willPublish,
+    };
+
+    // The public chapter list as it will be AFTER this save (so the novel is updated in the same batch).
+    const merged = existing.filter(c => c.id !== id).concat([{ ...(before || ({} as ChapterMeta)), ...chapterFields, id } as ChapterMeta]);
+    const summary = this.buildSummary(merged);
+
     const batch = writeBatch(db);
     batch.set(
       doc(db, 'novels', novelId, 'chapters', id),
       {
-        novelId,
-        number,
-        title,
-        titleEn: sanitizeSingleLine(input.titleEn || '').slice(0, LIMITS.chapterTitleMax),
-        published: Boolean(input.published),
+        ...chapterFields,
         updatedAt: serverTimestamp(),
         ...(isNew ? { createdAt: serverTimestamp() } : {}),
       },
       { merge: true }
     );
     batch.set(doc(db, 'chapterContents', id), { novelId, body }, { merge: true });
+    batch.update(doc(db, 'novels', novelId), {
+      chaptersSummary: summary,
+      chaptersCount: summary.length,
+      updatedAt: serverTimestamp(),
+      // The rules require this bump in the same batch for any chapter that goes live.
+      ...(releasing ? { releaseCount: increment(1), lastReleaseAt: serverTimestamp() } : {}),
+    });
 
     await refreshAuthToken();
     await batch.commit();
     clientCache.invalidate(`chapter_content_${id}`);
-    await this.syncSummary(novelId);
+    clientCache.invalidate(`novel_${novelId}`);
     return id;
   },
 
@@ -270,10 +327,10 @@ export const writerService = {
    * touch catalog/home, so the card's chapter count there is refreshed when the admin republishes or
    * presses "rebuild catalog".
    */
-  async syncSummary(novelId: string): Promise<void> {
-    const chapters = await this.getChapters(novelId);
-    const summary: ChapterSummaryItem[] = chapters
+  buildSummary(chapters: ChapterMeta[]): ChapterSummaryItem[] {
+    return chapters
       .filter(c => c.published)
+      .sort((x, y) => (x.number || 0) - (y.number || 0))
       .map(c =>
         stripUndefined({
           id: c.id,
@@ -283,6 +340,11 @@ export const writerService = {
           isFree: Boolean(c.isFree),
         }) as ChapterSummaryItem
       );
+  },
+
+  async syncSummary(novelId: string): Promise<void> {
+    const chapters = await this.getChapters(novelId);
+    const summary = this.buildSummary(chapters);
     const batch = writeBatch(db);
     batch.update(doc(db, 'novels', novelId), {
       chaptersSummary: summary,
@@ -291,5 +353,142 @@ export const writerService = {
     });
     await batch.commit();
     clientCache.invalidate(`novel_${novelId}`);
+  },
+
+  // ------------------------------------------------------------------------------- pricing
+
+  /** Price, free chapters and the free-novel flag of the writer's OWN novel (rules block it when priceLocked). */
+  async updatePricing(novelId: string, input: WriterPricingInput): Promise<void> {
+    const novelPrice = Number(input.novelPrice);
+    if (!Number.isFinite(novelPrice) || novelPrice < 0 || novelPrice > 5000) throw new Error('سعر الرواية يجب أن يكون بين 0 و 5000 جنيه.');
+    const bookRaw = input.bookPrice;
+    const bookPrice = bookRaw === null || bookRaw === undefined || Number.isNaN(Number(bookRaw)) ? null : Number(bookRaw);
+    if (bookPrice !== null && (bookPrice < 0 || bookPrice > 5000)) throw new Error('سعر الكتاب الرقمي يجب أن يكون بين 0 و 5000 جنيه.');
+    const freeChapters = Math.floor(Number(input.freeChapters) || 0);
+    if (freeChapters < 0 || freeChapters > 500) throw new Error('عدد الفصول المجانية يجب أن يكون بين 0 و 500.');
+
+    await refreshAuthToken();
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'novels', novelId), {
+      novelPrice,
+      bookPrice,
+      freeChapters,
+      isFreeNovel: Boolean(input.isFreeNovel),
+      updatedAt: serverTimestamp(),
+    });
+    await batch.commit();
+    clientCache.invalidate(`novel_${novelId}`);
+  },
+
+  // -------------------------------------------------------------------------------- earnings
+
+  /** Sales rows of this writer, newest first. */
+  async getMySales(uid: string): Promise<Sale[]> {
+    const snap = await getDocs(query(collection(db, 'sales'), where('ownerId', '==', uid)));
+    const list: Sale[] = [];
+    snap.forEach(d => list.push({ id: d.id, ...(d.data() as Omit<Sale, 'id'>) }));
+    return list.sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+  },
+
+  // -------------------------------------------------------------------------------- coupons
+
+  async getMyCoupons(uid: string): Promise<Coupon[]> {
+    const snap = await getDocs(query(collection(db, 'coupons'), where('ownerId', '==', uid)));
+    const list: Coupon[] = [];
+    snap.forEach(d => list.push({ code: d.id, ...(d.data() as Omit<Coupon, 'code'>) }));
+    return list;
+  },
+
+  async saveCoupon(uid: string, input: WriterCouponInput, isEdit: boolean): Promise<void> {
+    const code = sanitizeSingleLine(input.code).toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, LIMITS.couponCodeMax);
+    if (code.length < 3) throw new Error('كود الخصم يجب أن يكون 3 أحرف أو أرقام إنجليزية على الأقل.');
+    const value = Number(input.value);
+    if (!Number.isFinite(value) || value <= 0) throw new Error('قيمة الخصم يجب أن تكون أكبر من صفر.');
+    if (input.type === 'percent' && value > 90) throw new Error('نسبة الخصم لا تزيد عن 90%.');
+    if (!input.novelId) throw new Error('اختر الرواية التي ينطبق عليها الخصم.');
+    const maxUses = Math.max(0, Math.floor(Number(input.maxUses) || 0));
+
+    const ref = doc(db, 'coupons', code);
+    if (!isEdit && (await getDoc(ref)).exists()) throw new Error('هذا الكود مستخدم بالفعل. اختر كودًا آخر.');
+
+    const data: Record<string, unknown> = {
+      code,
+      type: input.type,
+      value,
+      active: Boolean(input.active),
+      expiresAt: input.expiresAt || null,
+      maxUses,
+      ownerId: uid,
+      novelId: input.novelId,
+    };
+    if (!isEdit) data.usedCount = 0;
+    await refreshAuthToken();
+    await setDoc(ref, data, { merge: isEdit });
+  },
+
+  async deleteCoupon(code: string): Promise<void> {
+    await refreshAuthToken();
+    await deleteDoc(doc(db, 'coupons', code));
+  },
+
+  // ------------------------------------------------------------- requests to join plans
+
+  async getMyPlanRequests(uid: string): Promise<PlanRequest[]> {
+    const snap = await getDocs(query(collection(db, 'planRequests'), where('ownerId', '==', uid)));
+    const list: PlanRequest[] = [];
+    snap.forEach(d => list.push({ id: d.id, ...(d.data() as Omit<PlanRequest, 'id'>) }));
+    return list.sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+  },
+
+  async requestPlan(uid: string, ownerName: string, novel: Pick<Novel, 'id' | 'title'>, plan: { id: string; name: string }): Promise<void> {
+    await refreshAuthToken();
+    const ref = doc(db, 'planRequests', `${novel.id}_${plan.id}`);
+    // A rejected request can be sent again: remove the old one first (only the admin may update it).
+    const old = await getDoc(ref);
+    if (old.exists()) {
+      if ((old.data() as { status?: string }).status !== 'rejected') throw new Error('لديك طلب سابق لهذه الباقة بالفعل.');
+      await deleteDoc(ref);
+    }
+    await setDoc(ref, {
+      novelId: novel.id,
+      novelTitle: novel.title,
+      planId: plan.id,
+      planName: plan.name,
+      ownerId: uid,
+      ownerName: ownerName.slice(0, 80),
+      status: 'pending',
+      createdAt: serverTimestamp(),
+    });
+  },
+
+  async cancelPlanRequest(requestId: string): Promise<void> {
+    await refreshAuthToken();
+    await deleteDoc(doc(db, 'planRequests', requestId));
+  },
+};
+
+/** Admin side: approving a request adds the novel to the plan (arrayUnion) and closes the request. */
+export const planRequestAdmin = {
+  async list(): Promise<PlanRequest[]> {
+    const snap = await getDocs(collection(db, 'planRequests'));
+    const list: PlanRequest[] = [];
+    snap.forEach(d => list.push({ id: d.id, ...(d.data() as Omit<PlanRequest, 'id'>) }));
+    return list.sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+  },
+
+  async approve(req: PlanRequest): Promise<void> {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'plans', req.planId), { novelIds: arrayUnion(req.novelId) }, { merge: true });
+    batch.update(doc(db, 'planRequests', req.id), { status: 'approved', reviewedAt: serverTimestamp() });
+    await batch.commit();
+    clientCache.invalidate('site_plans');
+  },
+
+  async reject(req: PlanRequest, note: string): Promise<void> {
+    await setDoc(
+      doc(db, 'planRequests', req.id),
+      { status: 'rejected', adminNote: sanitizeSingleLine(note).slice(0, 200), reviewedAt: serverTimestamp() },
+      { merge: true }
+    );
   },
 };

@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   Globe2,
   RefreshCw,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -38,6 +39,7 @@ export const AdminLayout: React.FC = () => {
     { to: '/admin/books', label: t.admin.navBooks, icon: ShoppingBag },
     { to: '/admin/orders', label: t.admin.navOrders, icon: Zap },
     { to: '/admin/users', label: t.visitorManagement.tabVisitors, icon: UserRound },
+    { to: '/admin/writers', label: language === 'ar' ? 'الكتّاب' : 'Writers', icon: Users },
     { to: '/admin/plans-coupons', label: t.admin.navPlansCoupons, icon: Sparkles },
     { to: '/admin/ratings', label: t.admin.navRatings, icon: Star },
     { to: '/admin/settings', label: t.admin.navSettings, icon: Settings },

@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { orderService } from '../services/orderService';
 import { LIMITS } from '../config';
+import { couponAppliesToItem } from '../lib/couponScope';
 
 export const CartPage: React.FC = () => {
   const navigate = useNavigate();
@@ -38,6 +39,14 @@ export const CartPage: React.FC = () => {
     setCouponMsg(null);
     const result = await orderService.validateCoupon(couponInput);
     setValidatingCoupon(false);
+
+    if (result.valid && result.coupon && result.coupon.novelId && !cart.some(i => couponAppliesToItem(result.coupon, i))) {
+      setCouponMsg({
+        type: 'error',
+        text: 'هذا الكوبون خاص برواية معيّنة وليست في سلتك. أضف تلك الرواية أو كتابها الرقمي أولًا.',
+      });
+      return;
+    }
 
     if (result.valid && result.coupon) {
       applyCoupon(result.coupon);

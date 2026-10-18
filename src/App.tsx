@@ -30,6 +30,7 @@ const AdminBooksPage = lazy(() => import('./pages/admin/AdminBooksPage').then(m 
 const AdminOrdersPage = lazy(() => import('./pages/admin/AdminOrdersPage').then(m => ({ default: m.AdminOrdersPage })));
 const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage').then(m => ({ default: m.AdminUsersPage })));
 const AdminPlansCouponsPage = lazy(() => import('./pages/admin/AdminPlansCouponsPage').then(m => ({ default: m.AdminPlansCouponsPage })));
+const AdminWritersPage = lazy(() => import('./pages/admin/AdminWritersPage').then(m => ({ default: m.AdminWritersPage })));
 const AdminRatingsPage = lazy(() => import('./pages/admin/AdminRatingsPage').then(m => ({ default: m.AdminRatingsPage })));
 const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage').then(m => ({ default: m.AdminSettingsPage })));
 
@@ -124,6 +125,7 @@ const AppShell: React.FC = () => {
             <Route path="orders" element={<AdminOrdersPage />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="plans-coupons" element={<AdminPlansCouponsPage />} />
+            <Route path="writers" element={<AdminWritersPage />} />
             <Route path="ratings" element={<AdminRatingsPage />} />
             <Route path="settings" element={<AdminSettingsPage />} />
           </Route>

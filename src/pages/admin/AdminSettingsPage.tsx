@@ -86,6 +86,26 @@ export const AdminSettingsPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Writers' revenue share */}
+        <div className="p-4 bg-stone-50 border border-[var(--line)] space-y-2">
+          <h4 className="font-serif text-base font-medium text-[var(--green)]">نسبة الكاتب من المبيعات</h4>
+          <p className="text-[11px] text-[var(--muted)] leading-relaxed">
+            نسبة الكاتب من كل عملية بيع لروايته أو كتابه الرقمي (بعد الخصم). الباقي للمنصة. تُسجَّل النسبة وقت الموافقة
+            على الطلب، فتغييرها لا يغيّر المبيعات القديمة. الافتراضي 70%.
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={settings.writerSharePercent ?? 70}
+              onChange={e => setSettings({ ...settings, writerSharePercent: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
+              className="w-24 p-2 border border-[var(--line)] text-xs font-mono"
+            />
+            <span className="text-xs">% للكاتب · {100 - (settings.writerSharePercent ?? 70)}% للمنصة</span>
+          </div>
+        </div>
+
         {/* Payment Configuration */}
         <div className="p-4 bg-stone-50 border border-[var(--line)] space-y-4">
           <h4 className="font-serif text-base font-medium text-[var(--green)]">

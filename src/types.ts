@@ -79,6 +79,11 @@ export interface Novel {
   bookFileUrl?: string;
   freeChapters: number; // e.g. first N chapters free
   isFreeNovel?: boolean; // true = the WHOLE novel is free to read (every chapter), whatever freeChapters says
+  /** Admin lock: when true the writer can no longer change novelPrice / bookPrice of this novel. */
+  priceLocked?: boolean;
+  /** Writer release cadence (see src/lib/releaseSchedule.ts). */
+  releaseCount?: number;
+  lastReleaseAt?: unknown;
   chaptersCount: number;
   published: boolean;
   featured?: boolean;
@@ -294,6 +299,9 @@ export interface Order {
 
 export interface Coupon {
   code: string;
+  /** Set on a WRITER coupon: the writer's uid and the single novel it discounts. Absent = site-wide admin coupon. */
+  ownerId?: string;
+  novelId?: string;
   type: 'percent' | 'fixed';
   value: number;
   active: boolean;
@@ -389,10 +397,46 @@ export interface SiteSettings {
   maxReviewsPerDayPerUser?: number;
   minReviewLength?: number;
   maxReviewLength?: number;
+  /** Writer's percentage of every novel/book sale (platform keeps the rest). Default 70. */
+  writerSharePercent?: number;
 }
 
 export interface ReaderSettings {
   fontSize: number;
   theme: 'light' | 'warm' | 'dark';
   width: 'narrow' | 'medium' | 'wide';
+}
+
+/** One row per novel/book line of an approved order (collection `sales`). Written by the admin approval batch. */
+export interface Sale {
+  id: string;
+  orderId: string;
+  novelId: string;
+  novelTitle?: string;
+  ownerId: string;
+  itemType: 'novel' | 'book';
+  gross: number;
+  discount: number;
+  net: number;
+  writerPercent: number;
+  writerShare: number;
+  platformShare: number;
+  createdAt: unknown;
+}
+
+export type PlanRequestStatus = 'pending' | 'approved' | 'rejected';
+
+/** A writer asks the admin to add their novel to a plan (collection `planRequests`, id = `${novelId}_${planId}`). */
+export interface PlanRequest {
+  id: string;
+  novelId: string;
+  novelTitle?: string;
+  planId: string;
+  planName?: string;
+  ownerId: string;
+  ownerName?: string;
+  status: PlanRequestStatus;
+  adminNote?: string;
+  createdAt: unknown;
+  reviewedAt?: unknown;
 }

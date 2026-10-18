@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CartItem, Coupon } from '../types';
+import { computeCartDiscount } from '../lib/couponScope';
 
 interface CartContextType {
   cart: CartItem[];
@@ -77,14 +78,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const subtotal = cart.reduce((sum, item) => sum + item.price, 0);
 
-  let discount = 0;
-  if (appliedCoupon && subtotal > 0) {
-    if (appliedCoupon.type === 'percent') {
-      discount = Math.round((subtotal * appliedCoupon.value) / 100);
-    } else {
-      discount = Math.min(appliedCoupon.value, subtotal);
-    }
-  }
+  // A writer coupon only discounts that writer's novel; a site coupon discounts everything.
+  const discount = computeCartDiscount(cart, appliedCoupon);
 
   const total = Math.max(0, subtotal - discount);
 

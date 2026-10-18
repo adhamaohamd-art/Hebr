@@ -22,6 +22,7 @@ export const defaultSettings: SiteSettings = {
   maxReviewsPerDayPerUser: 5,
   minReviewLength: 0,
   maxReviewLength: 1000,
+  writerSharePercent: 70,
 };
 
 export const settingsService = {

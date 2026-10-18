@@ -26,13 +26,15 @@ import { PageMeta } from '../components/PageMeta';
 import { LoadingState, ErrorState } from '../components/States';
 import { novelService } from '../services/novelService';
 import { libraryService } from '../services/libraryService';
+import { settingsService } from '../services/settingsService';
+import { plansCoveringNovel, cheapestMonthlyPrice } from '../lib/planCoverage';
 import { commentService } from '../services/commentService';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
 import { LIMITS } from '../config';
-import { Novel, ChapterMeta, ChapterContent, Comment, ReaderSettings } from '../types';
-import { getLocalizedNovelField, getLocalizedChapterTitle } from '../i18n/translations';
+import { Novel, ChapterMeta, ChapterContent, Comment, ReaderSettings, Plan } from '../types';
+import { getLocalizedNovelField, getLocalizedChapterTitle, getLocalizedPlan } from '../i18n/translations';
 import { getFriendlyErrorMessage, getAdminErrorMessage } from '../lib/firebase';
 
 export const ReaderPage: React.FC = () => {
@@ -52,6 +54,8 @@ export const ReaderPage: React.FC = () => {
   const [reloadKey, setReloadKey] = useState(0);
   const [bookmarked, setBookmarked] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Plans that REALLY include this novel (shown in the locked box; empty = no plan card at all)
+  const [coveringPlans, setCoveringPlans] = useState<Plan[]>([]);
 
   // Comments state
   const [comments, setComments] = useState<Comment[]>([]);
@@ -116,6 +120,7 @@ export const ReaderPage: React.FC = () => {
         setLastCommentDoc(null);
         setHasMoreComments(false);
         setCommentsOpen(false);
+        setCoveringPlans([]);
         const novelData = await novelService.getNovelById(novelId);
         if (!novelData) {
           setNovel(null);
@@ -161,6 +166,12 @@ export const ReaderPage: React.FC = () => {
           } else {
             // Locked: never fetch text
             setContent(null);
+            // Offer only the plans that actually include this novel
+            try {
+              setCoveringPlans(plansCoveringNovel(await settingsService.getPlans(), novelId));
+            } catch {
+              setCoveringPlans([]);
+            }
           }
         }
       } catch (err) {
@@ -503,7 +514,7 @@ export const ReaderPage: React.FC = () => {
               {t.reader.lockedDesc}
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-start mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-start mb-6 justify-center">
               {/* Option 1 */}
               <div className="p-4 bg-white border border-[var(--line)] flex flex-col justify-between">
                 <div>
@@ -570,24 +581,35 @@ export const ReaderPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Option 3 */}
-              <div className="p-4 bg-[var(--green)] text-white flex flex-col justify-between">
-                <div>
-                  <span className="text-xs text-[#e4c99a] font-semibold block mb-1">
-                    {t.reader.optionThreeEyebrow}
-                  </span>
-                  <h4 className="font-medium text-sm mb-1 text-white">{t.reader.optionThreeTitle}</h4>
-                  <p className="text-xs text-[#c3d1cb] mb-3">
-                    {t.reader.optionThreeDesc}
-                  </p>
+              {/* Option 3: only when at least one active plan really includes this novel */}
+              {coveringPlans.length > 0 && (
+                <div className="p-4 bg-[var(--green)] text-white flex flex-col justify-between">
+                  <div>
+                    <span className="text-xs text-[#e4c99a] font-semibold block mb-1">
+                      {t.reader.optionThreeEyebrow}
+                    </span>
+                    <h4 className="font-medium text-sm mb-1 text-white">{t.reader.optionThreeTitle}</h4>
+                    <p className="text-xs text-[#c3d1cb] mb-2">
+                      {language === 'ar'
+                        ? 'هذه الرواية مشمولة في:'
+                        : 'This novel is included in:'}
+                    </p>
+                    <ul className="text-xs text-[#ecd7ad] mb-3 space-y-0.5">
+                      {coveringPlans.map(p => (
+                        <li key={p.id}>• {getLocalizedPlan(p, language).name}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="pt-2 border-t border-[rgba(255,255,255,0.2)] flex items-center justify-between">
+                    <b className="text-[#ecd7ad] text-base">
+                      {t.reader.optionThreePricePrefix} {cheapestMonthlyPrice(coveringPlans)} {t.common.currency}
+                    </b>
+                    <Link to="/plans" className="light-button small">
+                      <Sparkles size={14} /> {t.common.plans}
+                    </Link>
+                  </div>
                 </div>
-                <div className="pt-2 border-t border-[rgba(255,255,255,0.2)] flex items-center justify-between">
-                  <b className="text-[#ecd7ad] text-base">{t.reader.optionThreePricePrefix} 35 {t.common.currency}</b>
-                  <Link to="/plans" className="light-button small">
-                    <Sparkles size={14} /> {t.common.plans}
-                  </Link>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         ) : (

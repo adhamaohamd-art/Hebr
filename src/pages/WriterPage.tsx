@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Edit2, Trash2, X, BookOpen, Send, Undo2, Feather, AlertCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, BookOpen, Send, Undo2, Feather, AlertCircle, BadgeDollarSign } from 'lucide-react';
 import { PageMeta } from '../components/PageMeta';
 import { Cover } from '../components/Cover';
 import { LoadingState } from '../components/States';
@@ -12,6 +12,8 @@ import { GENRE_KEYS, MAX_GENRES, getNovelGenres } from '../lib/genres';
 import { canCreateNovel, remainingNovels } from '../lib/writer';
 import { getFriendlyErrorMessage } from '../lib/firebase';
 import { ChapterMeta, Novel } from '../types';
+import { releaseStatus } from '../lib/releaseSchedule';
+import { ReleaseBanner, PricingModal, EarningsPanel, CouponsPanel, PlanRequestsPanel } from '../components/WriterPanels';
 
 type NovelForm = WriterNovelInput & { id?: string };
 
@@ -37,6 +39,12 @@ const emptyNovelForm = (authorName: string): NovelForm => ({
   color: '#314f49',
   accent: '#d9bb91',
 });
+
+function toMillisAny(v: unknown): number {
+  const x = v as { toMillis?: () => number } | number | null | undefined;
+  if (typeof x === 'number') return x;
+  return x?.toMillis?.() ?? 0;
+}
 
 function novelStatus(novel: Novel, ar: boolean): { label: string; cls: string } {
   const rs = novel.reviewStatus || 'draft';
@@ -68,6 +76,7 @@ export const WriterPage: React.FC = () => {
   const [chapters, setChapters] = useState<ChapterMeta[]>([]);
   const [chaptersLoading, setChaptersLoading] = useState(false);
   const [chapterForm, setChapterForm] = useState<ChapterForm | null>(null);
+  const [pricingOf, setPricingOf] = useState<Novel | null>(null);
 
   const toast = (msg: string) => {
     setToastMsg(msg);
@@ -112,6 +121,10 @@ export const WriterPage: React.FC = () => {
     }
     load();
   }, [authLoading, user, load]);
+
+  useEffect(() => {
+    setChaptersOf(cur => (cur ? novels.find(n => n.id === cur.id) || cur : cur));
+  }, [novels]);
 
   if (authLoading || (user && loading && novels.length === 0 && !errorMsg)) {
     return <LoadingState message={t.common.loading} />;
@@ -245,7 +258,8 @@ export const WriterPage: React.FC = () => {
 
   const openNewChapter = () => {
     const next = chapters.reduce((m, c) => Math.max(m, c.number || 0), 0) + 1;
-    setChapterForm({ number: next, title: '', titleEn: '', body: '', published: true });
+    const canRelease = chaptersOf ? releaseStatus(chaptersOf.releaseCount, toMillisAny(chaptersOf.lastReleaseAt)).canRelease : true;
+    setChapterForm({ number: next, title: '', titleEn: '', body: '', published: canRelease });
   };
 
   const openEditChapter = async (c: ChapterMeta) => {
@@ -263,7 +277,11 @@ export const WriterPage: React.FC = () => {
     try {
       setSaving(true);
       setErrorMsg('');
-      await writerService.saveChapter(chaptersOf.id, chapterForm, chapterForm.id);
+      // If releasing is not open yet, the chapter is saved as a draft instead of failing.
+      const wasPublished = chapters.find(c => c.id === chapterForm.id)?.published === true;
+      const canRelease = releaseStatus(chaptersOf.releaseCount, toMillisAny(chaptersOf.lastReleaseAt)).canRelease;
+      const publish = chapterForm.published && (wasPublished || canRelease);
+      await writerService.saveChapter(chaptersOf.id, { ...chapterForm, published: publish }, chapterForm.id);
       setChapterForm(null);
       toast(t.common.success);
       await refreshChapters();
@@ -335,8 +353,8 @@ export const WriterPage: React.FC = () => {
 
       <div className="mb-6 p-3 bg-stone-50 border border-[var(--line)] text-xs text-[var(--muted)] leading-relaxed">
         {ar
-          ? 'تُحفظ رواياتك كمسودات خاصة بك. عند الانتهاء اضغط «إرسال للمراجعة»، وتظهر للقراء بعد اعتماد الإدارة لها. التسعير وعدد الفصول المجانية تحددهما الإدارة.'
-          : 'Your novels are saved as private drafts. When ready, press “Send for review”; they go public after the admin approves them. Pricing and free chapters are set by the admin.'}
+          ? 'تُحفظ رواياتك كمسودات خاصة بك. عند الانتهاء اضغط «إرسال للمراجعة»، وتظهر للقراء بعد اعتماد الإدارة لها. أنت تحدد سعر رواياتك وفصولها المجانية من زر «التسعير». النشر: أول 3 فصول لكل رواية بلا انتظار، ثم فصل واحد كل 3 أيام.'
+          : 'Your novels are private drafts. When ready, press “Send for review”; they go public after the admin approves them. You set your own price and free chapters with the “Pricing” button. Releasing: the first 3 chapters of each novel have no wait, then one chapter every 3 days.'}
       </div>
 
       {/* ---------------- Novels list ---------------- */}
@@ -354,7 +372,13 @@ export const WriterPage: React.FC = () => {
                 <div className="w-14 shrink-0"><Cover novel={n} /></div>
                 <div className="flex-1 min-w-[200px]">
                   <b className="block">{n.title}</b>
-                  <small className="text-[var(--muted)]">{n.chaptersCount || 0} {t.common.chaptersCount}</small>
+                  <small className="text-[var(--muted)]">
+                    {n.chaptersCount || 0} {t.common.chaptersCount} ·{' '}
+                    {n.isFreeNovel
+                      ? ar ? 'مجانية بالكامل' : 'Fully free'
+                      : `${n.novelPrice || 0} ${ar ? 'ج.م' : 'EGP'}${(n.freeChapters || 0) > 0 ? (ar ? ` · ${n.freeChapters} فصول مجانية` : ` · ${n.freeChapters} free`) : ''}`}
+                    {n.priceLocked ? (ar ? ' · السعر مقفول من الإدارة' : ' · price locked by admin') : ''}
+                  </small>
                   <div className="mt-1">
                     <span className={`px-2 py-0.5 text-[11px] ${st.cls}`}>{st.label}</span>
                   </div>
@@ -365,6 +389,9 @@ export const WriterPage: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-2">
                   <button className="outline-button small" onClick={() => openChapters(n)}>
                     <BookOpen size={14} /> {ar ? 'الفصول' : 'Chapters'}
+                  </button>
+                  <button className="outline-button small" onClick={() => setPricingOf(n)}>
+                    <BadgeDollarSign size={14} /> {ar ? 'التسعير' : 'Pricing'}
                   </button>
                   <button className="outline-button small" onClick={() => openEditNovel(n)}>
                     <Edit2 size={14} /> {t.common.edit}
@@ -387,6 +414,28 @@ export const WriterPage: React.FC = () => {
             );
           })}
         </div>
+      )}
+
+      {/* ---------------- Earnings / discounts / plan requests ---------------- */}
+      {novels.length > 0 && (
+        <>
+          <EarningsPanel uid={user.uid} novels={novels} ar={ar} />
+          <CouponsPanel uid={user.uid} novels={novels} ar={ar} explain={explain} />
+          <PlanRequestsPanel uid={user.uid} ownerName={profile?.name || user.email || ''} novels={novels} ar={ar} explain={explain} />
+        </>
+      )}
+
+      {pricingOf && (
+        <PricingModal
+          novel={pricingOf}
+          ar={ar}
+          explain={explain}
+          onClose={() => setPricingOf(null)}
+          onSaved={() => {
+            toast(t.common.success);
+            load();
+          }}
+        />
       )}
 
       {/* ---------------- Delete confirm ---------------- */}
@@ -508,6 +557,8 @@ export const WriterPage: React.FC = () => {
             </div>
             {errorMsg && <div className="mb-4 p-3 bg-red-50 text-red-800 border border-red-300 text-xs" role="alert">{errorMsg}</div>}
 
+            <ReleaseBanner novel={chaptersOf} ar={ar} />
+
             {!chapterForm ? (
               <>
                 <div className="flex justify-end mb-3">
@@ -556,10 +607,24 @@ export const WriterPage: React.FC = () => {
                   </label>
                   <textarea required rows={14} maxLength={LIMITS.chapterBodyMax} value={chapterForm.body} onChange={e => setChapterForm({ ...chapterForm, body: e.target.value })} className={`${inputCls} leading-relaxed`} />
                 </div>
-                <label className="flex items-center gap-2 text-xs cursor-pointer">
-                  <input type="checkbox" checked={chapterForm.published} onChange={e => setChapterForm({ ...chapterForm, published: e.target.checked })} />
-                  {ar ? 'فصل منشور (يظهر للقراء بعد اعتماد الرواية)' : 'Published chapter (visible once the novel is approved)'}
-                </label>
+                {(() => {
+                  const wasPublished = chapters.find(c => c.id === chapterForm.id)?.published === true;
+                  const canRelease = releaseStatus(chaptersOf.releaseCount, toMillisAny(chaptersOf.lastReleaseAt)).canRelease;
+                  const blocked = !wasPublished && !canRelease;
+                  return (
+                    <label className={`flex items-center gap-2 text-xs ${blocked ? 'opacity-60' : 'cursor-pointer'}`}>
+                      <input
+                        type="checkbox"
+                        disabled={blocked}
+                        checked={blocked ? false : chapterForm.published}
+                        onChange={e => setChapterForm({ ...chapterForm, published: e.target.checked })}
+                      />
+                      {blocked
+                        ? ar ? 'النشر غير متاح الآن (انتظر الموعد المذكور أعلاه) — سيُحفظ كمسودة' : 'Releasing is not available yet (see the date above) — it will be saved as a draft'
+                        : ar ? 'نشر الفصل (يظهر للقراء بعد اعتماد الرواية، ويُحتسب من حصة النشر)' : 'Release this chapter (visible once the novel is approved; counts toward your release schedule)'}
+                    </label>
+                  );
+                })()}
                 <div className="flex justify-end gap-3 pt-4 border-t border-[var(--line)]">
                   <button type="button" className="outline-button small" onClick={() => setChapterForm(null)}>{t.common.cancel}</button>
                   <button type="submit" className="primary-button small" disabled={saving}>{saving ? t.common.loading : t.common.save}</button>

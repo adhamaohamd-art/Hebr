@@ -55,8 +55,9 @@ service cloud.firestore {
     // (get = state before, getAfter = state after), so neither the counter nor the quota can be
     // forged from the browser. Same pattern as the rating aggregates below.
     //
-    // Writers can NEVER: publish (published stays false until an admin approves), set prices,
-    // free-chapter flags, ratings, or touch catalog/home. Admin approval makes the novel public.
+    // Writers can NEVER: publish a novel (published stays false until an admin approves), change
+    // ratings, or touch catalog/home. They DO control their own novel's price, free chapters and free
+    // flag (the admin can lock the price with priceLocked) and release chapters on a cadence.
     // ---------------------------------------------------------------------------------------
 
     // Quota coming from the plan of an ACTIVE subscription ('admin_grant' carries no writer quota).
@@ -115,8 +116,23 @@ service cloud.firestore {
         getAfter(statsPath).data.novelCount <= writerQuota();
     }
 
-    // A writer edits their own novel: descriptive fields + chapter summary only; may send it for
-    // review (draft/rejected -> pending) or take it back (pending -> draft). Never publish/price.
+    // A writer edits their own novel: descriptive fields, chapter summary, price / free chapters /
+    // free-novel flag (unless the admin locked the price), and the release counters. They may send it
+    // for review (draft/rejected -> pending) or take it back (pending -> draft). They can never set
+    // published (only the admin makes a novel public).
+    //
+    // Release cadence (mirrors src/lib/releaseSchedule.ts): the first 3 chapter releases are free,
+    // after that one release every 3 days. releaseCount may only move by +1 with lastReleaseAt ==
+    // request.time (the server timestamp), and only when the cadence allows it.
+    function writerReleaseOk() {
+      let d = request.resource.data;
+      let cnt = resource.data.get('releaseCount', 0);
+      return d.get('releaseCount', 0) == cnt + 1 &&
+        d.lastReleaseAt == request.time &&
+        (cnt < 3 ||
+         request.time >= resource.data.get('lastReleaseAt', request.time - duration.value(3, 'd')) + duration.value(3, 'd'));
+    }
+
     function writerNovelUpdateOk() {
       let d = request.resource.data;
       let changed = d.diff(resource.data).affectedKeys();
@@ -125,11 +141,23 @@ service cloud.firestore {
         changed.hasOnly([
           'title', 'titleEn', 'author', 'authorEn', 'genre', 'genreEn', 'genres', 'status',
           'description', 'descriptionEn', 'coverUrl', 'color', 'accent',
-          'chaptersSummary', 'chaptersCount', 'reviewStatus', 'updatedAt'
+          'chaptersSummary', 'chaptersCount', 'reviewStatus', 'updatedAt',
+          'novelPrice', 'bookPrice', 'freeChapters', 'isFreeNovel',
+          'releaseCount', 'lastReleaseAt'
         ]) &&
         (!changed.hasAny(['reviewStatus']) ||
           (resource.data.get('reviewStatus', 'draft') in ['draft', 'pending', 'rejected'] &&
            d.reviewStatus in ['draft', 'pending'])) &&
+        // pricing: numbers within sane bounds, and frozen once the admin locked the price
+        (!changed.hasAny(['novelPrice', 'bookPrice']) ||
+          (resource.data.get('priceLocked', false) != true &&
+           d.get('novelPrice', 0) is number && d.get('novelPrice', 0) >= 0 && d.get('novelPrice', 0) <= 5000 &&
+           (d.get('bookPrice', null) == null ||
+            (d.bookPrice is number && d.bookPrice >= 0 && d.bookPrice <= 5000)))) &&
+        (!changed.hasAny(['freeChapters']) ||
+          (d.get('freeChapters', 0) is int && d.get('freeChapters', 0) >= 0 && d.get('freeChapters', 0) <= 500)) &&
+        (!changed.hasAny(['isFreeNovel']) || d.get('isFreeNovel', false) is bool) &&
+        (!changed.hasAny(['releaseCount', 'lastReleaseAt']) || writerReleaseOk()) &&
         d.title.size() >= 1 && d.title.size() <= 120 &&
         d.get('author', '').size() <= 80 &&
         d.get('description', '').size() <= 2000;
@@ -165,8 +193,15 @@ service cloud.firestore {
         );
     }
 
-    // Writer chapters: title/number/published only. They can never set isFree (free vs paid is the
-    // admin's call, through novels.freeChapters / novels.isFreeNovel).
+    // A chapter going live (created published, or flipped draft -> published) must come with a release
+    // bump on the novel in the SAME batch; the novel update rule (writerReleaseOk) checks the cadence.
+    function releaseBumpedWith(novelId) {
+      let novelPath = /databases/$(database)/documents/novels/$(novelId);
+      return getAfter(novelPath).data.get('releaseCount', 0) == get(novelPath).data.get('releaseCount', 0) + 1;
+    }
+
+    // Writer chapters: title/number/published only. They can never set isFree; free vs paid is
+    // controlled per novel through novels.freeChapters / novels.isFreeNovel.
     function writerChapterCreateOk(novelId) {
       let d = request.resource.data;
       return isNovelOwner(novelId) && writerCanWrite() &&
@@ -175,7 +210,8 @@ service cloud.firestore {
         d.number is int && d.number >= 1 && d.number <= 500 &&
         d.title is string && d.title.size() <= 150 &&
         d.get('titleEn', '').size() <= 150 &&
-        d.get('published', false) is bool;
+        d.get('published', false) is bool &&
+        (d.get('published', false) == false || releaseBumpedWith(novelId));
     }
 
     function writerChapterUpdateOk(novelId) {
@@ -185,7 +221,10 @@ service cloud.firestore {
         d.diff(resource.data).affectedKeys().hasOnly(['number', 'title', 'titleEn', 'published', 'updatedAt']) &&
         d.number is int && d.number >= 1 && d.number <= 500 &&
         d.title.size() <= 150 &&
-        d.get('titleEn', '').size() <= 150;
+        d.get('titleEn', '').size() <= 150 &&
+        (resource.data.get('published', false) == true ||
+         d.get('published', false) != true ||
+         releaseBumpedWith(novelId));
     }
 
     function writerContentCreateOk() {
@@ -519,10 +558,52 @@ service cloud.firestore {
     }
 
     // Coupons
+    // A writer coupon has ownerId == the writer and novelId == ONE novel they own; it only discounts that
+    // novel. The writer cannot touch usedCount (the admin approval batch increments it) and cannot take over
+    // an existing code. Percent is capped at 90.
+    function writerCouponShapeOk() {
+      let d = request.resource.data;
+      return writerCanWrite() &&
+        d.ownerId == request.auth.uid &&
+        d.novelId is string && isNovelOwner(d.novelId) &&
+        d.type in ['percent', 'fixed'] &&
+        d.value is number && d.value > 0 &&
+        (d.type == 'fixed' || d.value <= 90) &&
+        d.value <= 5000 &&
+        d.active is bool &&
+        d.get('maxUses', 0) is int && d.get('maxUses', 0) >= 0 &&
+        d.keys().hasOnly(['code', 'type', 'value', 'active', 'expiresAt', 'maxUses', 'usedCount', 'ownerId', 'novelId']);
+    }
+
     match /coupons/{code} {
       allow get: if isSignedIn() || isAdmin();
-      allow list: if isAdmin();
+      allow list: if isAdmin() || (isSignedIn() && resource.data.get('ownerId', '') == request.auth.uid);
+      allow create: if isAdmin() || (writerCouponShapeOk() && request.resource.data.get('usedCount', 0) == 0 &&
+        request.resource.data.code == code);
+      allow update: if isAdmin() || (resource.data.get('ownerId', '') == request.auth.uid && writerCouponShapeOk() &&
+        request.resource.data.get('usedCount', 0) == resource.data.get('usedCount', 0));
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.get('ownerId', '') == request.auth.uid);
+    }
+
+    // Sales ledger: one row per novel/book line of an approved order. Only the admin approval batch writes
+    // it; a writer reads only their own rows (query with where('ownerId', '==', uid)).
+    match /sales/{saleId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.get('ownerId', '') == request.auth.uid);
       allow write: if isAdmin();
+    }
+
+    // A writer asks the admin to add one of their novels to a plan. id = novelId_planId.
+    match /planRequests/{requestId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.get('ownerId', '') == request.auth.uid);
+      allow create: if writerCanWrite() &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        isNovelOwner(request.resource.data.novelId) &&
+        requestId == request.resource.data.novelId + '_' + request.resource.data.planId &&
+        request.resource.data.keys().hasOnly(['novelId', 'novelTitle', 'planId', 'planName', 'ownerId', 'ownerName', 'status', 'createdAt']);
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.get('ownerId', '') == request.auth.uid &&
+        resource.data.get('status', '') != 'approved');
     }
 
     // Comments with strict input validation
