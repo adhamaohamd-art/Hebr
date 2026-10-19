@@ -399,6 +399,8 @@ export interface SiteSettings {
   maxReviewLength?: number;
   /** Writer's percentage of every novel/book sale (platform keeps the rest). Default 70. */
   writerSharePercent?: number;
+  /** Extra genres added by the admin (on top of the built-in ones). `key` = canonical Arabic name. */
+  customGenres?: { key: string; en: string }[];
 }
 
 export interface ReaderSettings {

@@ -4,6 +4,7 @@ import { Novel } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 import { getLocalizedNovelField } from '../i18n/translations';
 import { getLocalizedGenres } from '../lib/genres';
+import { useGenres } from '../context/GenresContext';
 import { toCssImageUrl } from '../lib/sanitize';
 
 interface CoverProps {
@@ -14,6 +15,7 @@ interface CoverProps {
 
 export const Cover: React.FC<CoverProps> = ({ novel, large = false, small = false }) => {
   const { language } = useLanguage();
+  useGenres(); // re-render when admin-added genres finish loading
 
   const title = getLocalizedNovelField(novel, 'title', language);
   const author = getLocalizedNovelField(novel, 'author', language);

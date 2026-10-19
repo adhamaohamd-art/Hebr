@@ -27,6 +27,7 @@ import { getLocalizedNovelField, getLocalizedChapterTitle } from '../i18n/transl
 import { getFriendlyErrorMessage } from '../lib/firebase';
 import { getNovelRatingSummary } from '../lib/rating';
 import { getLocalizedGenres } from '../lib/genres';
+import { useGenres } from '../context/GenresContext';
 
 export const NovelDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -34,6 +35,7 @@ export const NovelDetailPage: React.FC = () => {
   const { user, profile, isAdmin, loading: authLoading } = useAuth();
   const { addToCart } = useCart();
   const { t, language, rtl } = useLanguage();
+  useGenres(); // re-render when admin-added genres finish loading
 
   const [novel, setNovel] = useState<Novel | null>(null);
   const [chapters, setChapters] = useState<ChapterMeta[]>([]);

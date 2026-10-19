@@ -7,6 +7,10 @@ import {
   novelHasGenre,
   getLocalizedGenres,
   genreFieldsForSave,
+  setCustomGenres,
+  getAllGenreKeys,
+  genreLabel,
+  sanitizeCustomGenres,
 } from '../src/lib/genres';
 import { translations } from '../src/i18n/translations';
 
@@ -75,6 +79,25 @@ test('7. Saving keeps genre/genreEn = the first genre, so older code still works
   assert.deepEqual(f.genres, ['فانتازيا', 'أكشن']);
   assert.equal(f.genre, 'فانتازيا');
   assert.equal(f.genreEn, 'Fantasy');
+});
+
+test('8. Admin-added genres (e.g. Horror) work like built-in ones', () => {
+  setCustomGenres([{ key: 'رعب', en: 'Horror' }, { key: 'رعب', en: 'dup' }, { key: 'دراما', en: 'clash' }, { key: '  ', en: 'x' }]);
+  assert.deepEqual(getAllGenreKeys(), [...GENRE_KEYS, 'رعب']);
+  assert.equal(genreLabel('رعب', 'ar'), 'رعب');
+  assert.equal(genreLabel('رعب', 'en'), 'Horror');
+  const novel = { genre: 'رعب', genres: ['رعب', 'غموض'] };
+  assert.ok(novelHasGenre(novel, 'رعب'));
+  assert.ok(novelHasGenre(novel, 'Horror'));
+  assert.deepEqual(getLocalizedGenres(novel, 'en'), ['Horror', 'Mystery']);
+  assert.equal(genreFieldsForSave(['رعب']).genreEn, 'Horror');
+  setCustomGenres([]);
+  assert.deepEqual(getAllGenreKeys(), [...GENRE_KEYS]);
+});
+
+test('9. Custom genre list is sanitized (reserved names, blanks, English fallback)', () => {
+  assert.deepEqual(sanitizeCustomGenres([{ key: 'الكل', en: 'x' }, { key: 'Romance', en: 'x' }, { key: 'كوميدي' }]), [{ key: 'كوميدي', en: 'كوميدي' }]);
+  assert.deepEqual(sanitizeCustomGenres('nope'), []);
 });
 
 console.log(`\n🎉 All ${passed} genre tests passed!`);

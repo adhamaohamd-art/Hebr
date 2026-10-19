@@ -14,10 +14,12 @@ import { orderService } from '../../services/orderService';
 import { useLanguage } from '../../context/LanguageContext';
 import { getLocalizedNovelField } from '../../i18n/translations';
 import { getLocalizedGenres } from '../../lib/genres';
+import { useGenres } from '../../context/GenresContext';
 import { Novel, Order } from '../../types';
 
 export const AdminOverviewPage: React.FC = () => {
   const { t, language, rtl } = useLanguage();
+  useGenres(); // re-render when admin-added genres finish loading
   const [novels, setNovels] = useState<Novel[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);

@@ -4,6 +4,7 @@ import { LoadingState } from '../../components/States';
 import { settingsService, defaultSettings } from '../../services/settingsService';
 import { useLanguage } from '../../context/LanguageContext';
 import { SiteSettings } from '../../types';
+import { AdminGenresCard } from './AdminGenresCard';
 
 export const AdminSettingsPage: React.FC = () => {
   const { t } = useLanguage();
@@ -31,7 +32,9 @@ export const AdminSettingsPage: React.FC = () => {
     e.preventDefault();
     try {
       setSaving(true);
-      await settingsService.updateSettings(settings);
+      // customGenres is saved by the Genres card itself — don't overwrite it with a stale copy here
+      const { customGenres: _customGenres, ...rest } = settings;
+      await settingsService.updateSettings(rest);
       setNotice(t.adminSettings.successNotice);
       setTimeout(() => setNotice(''), 4000);
     } catch (err: unknown) {
@@ -180,6 +183,8 @@ export const AdminSettingsPage: React.FC = () => {
           </button>
         </div>
       </form>
+
+      <AdminGenresCard />
     </div>
   );
 };

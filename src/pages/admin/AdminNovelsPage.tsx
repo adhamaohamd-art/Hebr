@@ -6,14 +6,16 @@ import { LoadingState } from '../../components/States';
 import { novelService } from '../../services/novelService';
 import { useLanguage } from '../../context/LanguageContext';
 import { getLocalizedNovelField } from '../../i18n/translations';
+import { useGenres } from '../../context/GenresContext';
 import { Novel } from '../../types';
 import { getAdminErrorMessage } from '../../lib/firebase';
 import { getNovelRatingSummary } from '../../lib/rating';
-import { GENRE_KEYS, MAX_GENRES, getNovelGenres, genreFieldsForSave, getLocalizedGenres } from '../../lib/genres';
+import { MAX_GENRES, getNovelGenres, genreFieldsForSave, getLocalizedGenres } from '../../lib/genres';
 
 export const AdminNovelsPage: React.FC = () => {
   const navigate = useNavigate();
   const { t, language } = useLanguage();
+  const { genreKeys, labelOf } = useGenres();
   const [novels, setNovels] = useState<Novel[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingNovel, setEditingNovel] = useState<Partial<Novel> | null>(null);
@@ -447,7 +449,7 @@ export const AdminNovelsPage: React.FC = () => {
                     </span>
                   </label>
                   <div className="flex flex-wrap gap-2">
-                    {GENRE_KEYS.map(key => {
+                    {genreKeys.map(key => {
                       const selected = getNovelGenres(editingNovel);
                       const isOn = selected.includes(key);
                       const atLimit = !isOn && selected.length >= MAX_GENRES;
@@ -468,7 +470,7 @@ export const AdminNovelsPage: React.FC = () => {
                               : 'bg-white border-[var(--line)] disabled:opacity-40'
                           }`}
                         >
-                          {t.genres[key] || key}
+                          {labelOf(key)}
                         </button>
                       );
                     })}

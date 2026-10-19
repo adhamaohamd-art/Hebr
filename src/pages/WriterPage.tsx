@@ -9,6 +9,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { writerService, WriterNovelInput } from '../services/writerService';
 import { LIMITS } from '../config';
 import { GENRE_KEYS, MAX_GENRES, getNovelGenres } from '../lib/genres';
+import { useGenres } from '../context/GenresContext';
 import { canCreateNovel, remainingNovels } from '../lib/writer';
 import { getFriendlyErrorMessage } from '../lib/firebase';
 import { ChapterMeta, Novel } from '../types';
@@ -59,6 +60,7 @@ export const WriterPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, profile, loading: authLoading, writerLimit, emailVerified } = useAuth();
   const { t, language } = useLanguage();
+  const { genreKeys, labelOf } = useGenres();
   const ar = language === 'ar';
 
   const [novels, setNovels] = useState<Novel[]>([]);
@@ -490,7 +492,7 @@ export const WriterPage: React.FC = () => {
               <div>
                 <label className="block text-xs font-medium mb-1">{ar ? `التصنيفات (حتى ${MAX_GENRES})` : `Genres (up to ${MAX_GENRES})`}</label>
                 <div className="flex flex-wrap gap-2">
-                  {GENRE_KEYS.map(key => {
+                  {genreKeys.map(key => {
                     const on = novelForm.genres.includes(key);
                     return (
                       <button
@@ -499,7 +501,7 @@ export const WriterPage: React.FC = () => {
                         onClick={() => toggleGenre(key)}
                         className={`px-2.5 py-1 text-xs border ${on ? 'bg-[var(--green)] text-white border-[var(--green)]' : 'bg-white border-[var(--line)]'}`}
                       >
-                        {t.genres[key] || key}
+                        {labelOf(key)}
                       </button>
                     );
                   })}

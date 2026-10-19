@@ -14,12 +14,14 @@ import { Novel, Entitlement } from '../types';
 import { getLocalizedNovelField } from '../i18n/translations';
 import { getNovelRatingSummary } from '../lib/rating';
 import { getLocalizedGenres } from '../lib/genres';
+import { useGenres } from '../context/GenresContext';
 
 export const StorePage: React.FC = () => {
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { user, loading: authLoading } = useAuth();
   const { t, language } = useLanguage();
+  useGenres(); // re-render when admin-added genres finish loading
   const [novels, setNovels] = useState<Novel[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');

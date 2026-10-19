@@ -9,6 +9,7 @@ import { libraryService } from '../services/libraryService';
 import { getLocalizedNovelField } from '../i18n/translations';
 import { getNovelRatingSummary } from '../lib/rating';
 import { getLocalizedGenres } from '../lib/genres';
+import { useGenres } from '../context/GenresContext';
 
 interface NovelCardProps {
   novel: Novel;
@@ -19,6 +20,7 @@ export const NovelCard: React.FC<NovelCardProps> = ({ novel, compact = false }) 
   const navigate = useNavigate();
   const { user } = useAuth();
   const { t, language } = useLanguage();
+  useGenres(); // re-render when admin-added genres finish loading
   const [bookmarked, setBookmarked] = useState(false);
 
   const title = getLocalizedNovelField(novel, 'title', language);

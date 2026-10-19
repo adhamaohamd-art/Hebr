@@ -8,13 +8,15 @@ import { novelService } from '../services/novelService';
 import { Novel } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 import { LIMITS } from '../config';
-import { GENRE_KEYS, novelHasGenre } from '../lib/genres';
+import { novelHasGenre } from '../lib/genres';
+import { useGenres } from '../context/GenresContext';
 
-const canonicalGenres = ['الكل', ...GENRE_KEYS];
 const canonicalStatuses = ['الكل', 'مستمرة', 'مكتملة'];
 
 export const BrowsePage: React.FC = () => {
   const { t, language } = useLanguage();
+  const { genreKeys, labelOf } = useGenres();
+  const canonicalGenres = useMemo(() => ['الكل', ...genreKeys], [genreKeys]);
   const [novels, setNovels] = useState<Novel[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -111,7 +113,7 @@ export const BrowsePage: React.FC = () => {
       {/* Genres Chips */}
       <div className="chip-row">
         {canonicalGenres.map(item => {
-          const displayLabel = t.genres[item] || item;
+          const displayLabel = item === 'الكل' ? t.genres[item] : labelOf(item);
           return (
             <button
               key={item}
